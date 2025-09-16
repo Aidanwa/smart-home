@@ -57,30 +57,6 @@ class Agent:
 
         self.messages.append({"role": "assistant", "content": assistant_reply})
 
-    def ask(self, prompt: str) -> str:
-        """Send a prompt to the model and return the full response (non-streaming)."""
-        url = "http://localhost:11434/api/chat"
-
-        self.messages.append({"role": "user", "content": prompt})
-
-        data = {
-            "model": self.model,
-            "messages": self.messages,
-            "stream": False
-        }
-
-        response = requests.post(url, json=data)
-
-        if response.status_code != 200:
-            raise RuntimeError(f"Error from Ollama: {response.text}")
-
-        output = response.json()
-        assistant_reply = output["message"]["content"]
-
-        self.messages.append({"role": "assistant", "content": assistant_reply})
-
-        return assistant_reply
-
 
 if __name__ == "__main__":
     while True:
