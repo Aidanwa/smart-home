@@ -11,4 +11,8 @@ requires-python = ">=3.9"
 dependencies = [
     "requests>=2.31",
     "python-dotenv>=1.0",
+    "vosk>=0.3.45",
+    "sounddevice>=0.5.2",
+    "pyttsx3>=2.99",
+    "simpleaudio>=1.0.4",
 ]

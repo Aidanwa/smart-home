@@ -1,6 +1,6 @@
 import requests
 import os
-from smart_home.agentic.agent import Tool, Agent
+from smart_home.agentic.agents.agent import Tool, Agent
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,16 +10,16 @@ class WeatherTool(Tool):
 
     def __init__(self):
         schema = {
-        "type": "function",
+            "type": "function",
             "function": {
                 "name": "get_weather",
-                "description": "Get the weather in a given location, or 'home' if no location is provided",
+                "description": "Fetch current weather for a location, or 'home' if none is given",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "location": {
                             "type": "string",
-                            "description": "The location to get the weather for, or 'home' for the current location",
+                            "description": "City, region, or 'home' for default location",
                             "default": "home"
                         }
                     },
@@ -44,13 +44,12 @@ class WeatherTool(Tool):
             data = res.json()
 
             current = data["current_condition"][0]
-            area = data.get("nearest_area", [{}])[0].get("areaName", [{}])[0].get("value", location or "your area")
 
             summary = (
-                f"The weather in {area} is {current['weatherDesc'][0]['value'].lower()}, "
+                f"The weather in {location} is {current['weatherDesc'][0]['value'].lower()}, "
                 f"with a temperature of {current['temp_F']}°F "
                 f"(feels like {current['FeelsLikeF']}°F). "
-                f"Humidity is {current['humidity']}%, "
+                f"Humidity is {current['humidity']}%. Tell this to the user."
             )
 
             return summary

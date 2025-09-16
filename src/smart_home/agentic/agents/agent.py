@@ -18,12 +18,17 @@ class Agent:
         messages: list[dict[str, str]] | None = None,
         system_prompt: str = "",
         model: str = "llama3.1:8b",
+        include_time: bool = False,
     ) -> None:
         self.model: str = model
         self.system_prompt: str = system_prompt
         self.tools: list = list(tools or [])
         self.tools_schema: list[dict] = [tool.schema for tool in self.tools]
         self.messages: list[dict[str, str]] = list(messages or [])
+        if include_time:
+            from datetime import datetime
+            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            self.system_prompt += f" It is {now}"
         if self.system_prompt:
             self.messages.append({"role": "system", "content": self.system_prompt})
 
@@ -38,7 +43,7 @@ class Agent:
 
         while True:
             if loop_count >= max_tool_loops:
-                yield "\n[⚠️ Max tool loop limit reached — stopping.]\n"
+                print("\n[Max tool loop limit reached — stopping.]\n")
                 break
 
             url = "http://localhost:11434/api/chat"
@@ -54,7 +59,7 @@ class Agent:
 
             with requests.post(url, json=data, stream=True) as response:
                 if response.status_code != 200:
-                    yield f"\nError: {response.text}\n"
+                    print(f"\nError: {response.text}\n")
                     return
 
                 for line in response.iter_lines():
@@ -68,7 +73,7 @@ class Agent:
                     if tool_calls:
                         tool_used = True
                         loop_count += 1
-                        yield f"\n[Tool call requested: {tool_calls}]\n"
+                        print(f"\n[Tool call requested: {tool_calls}]\n")
 
                         for tool_call in tool_calls:
                             fn = tool_call["function"]["name"]
@@ -87,7 +92,7 @@ class Agent:
                                         "role": "tool",
                                         "content": result
                                     })
-                                    yield f"[Tool {fn} executed → {result}]\n"
+                                    print(f"[Tool {fn} executed → {result}]\n")
                         break 
 
                     # Handle natural content
