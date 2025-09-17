@@ -1,13 +1,15 @@
+import json
 import queue
 import threading
+import re
 import sys
-import sounddevice as sd
-import json
-from vosk import Model, KaldiRecognizer
+
 import pyttsx3
 import simpleaudio as sa
+import sounddevice as sd
 import winsound
-import re
+from collections.abc import Iterable
+from vosk import Model, KaldiRecognizer
 
 # Load the Vosk model globally so it's only initialized once
 model = Model("models/vosk-model-small-en-us-0.15")
@@ -75,68 +77,74 @@ def text_to_speech(text: str, rate: int = 180, volume: float = 1.0, voice: str |
     engine.runAndWait()
 
 
-def text_to_speech(text: str, rate: int = 180, volume: float = 1.0, voice: str | None = None):
-    """Convert text to speech using the system TTS engine."""
-    engine = pyttsx3.init()
+# To play audio text-to-speech during execution
+class TTSThread(threading.Thread):
+    def __init__(self, queue, rate: int = 180, volume: float = 1.0, voice: str | None = None):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.daemon = True
+        self.rate = rate
+        self.volume = volume
+        self.voice = voice
+        self.start()
 
-    # Configure properties
-    engine.setProperty("rate", rate)     # speed (default ~200)
-    engine.setProperty("volume", volume) # volume (0.0 to 1.0)
+    def run(self):
+        engine = pyttsx3.init()
+        engine.setProperty("rate", self.rate)
+        engine.setProperty("volume", self.volume)
 
-    # Pick a voice if specified
-    if voice is not None:
-        voices = engine.getProperty("voices")
-        for v in voices:
-            if voice.lower() in v.name.lower():
-                engine.setProperty("voice", v.id)
-                break
+        if self.voice is not None:
+            voices = engine.getProperty("voices")
+            target = self.voice.lower()
+            for v in voices:
+                if target in v.name.lower():
+                    engine.setProperty("voice", v.id)
+                    break
 
-    # Speak
-    engine.say(text)
-    engine.runAndWait()
-    
+        engine.startLoop(False)
+        t_running = True
+        while t_running or engine.isBusy():
+            if self.queue.empty():
+                engine.iterate()
+            else:
+                data = self.queue.get()
+                if data == "__STOP__":
+                    t_running = False
+                else:
+                    engine.say(data)
+        engine.endLoop()
 
-def streaming_tts(text_stream, rate=180, volume=1.0, voice=None, min_chars=40):
-    engine = pyttsx3.init(driverName="sapi5")
-    engine.setProperty("rate", rate)
-    engine.setProperty("volume", volume)
-    if voice:
-        for v in engine.getProperty("voices"):
-            if voice.lower() in v.name.lower():
-                engine.setProperty("voice", v.id)
-                break
+
+def streaming_tts(chunks: Iterable[str], rate=180, volume=1.0, voice=None):
+    q = queue.Queue()
+    tts_thread = TTSThread(q, rate=rate, volume=volume, voice=voice)
 
     buffer = ""
-    sentence_end = re.compile(r'[.!?]["\')\]]?\s')
+    try:
+        for chunk in chunks:
+            if not chunk:
+                continue
+            text = re.sub(r"\s+", " ", str(chunk))
+            text = re.sub("'", "", text)
+            buffer += " " + text
 
-    def flush_sentence_chunks():
-        nonlocal buffer
-        while True:
-            m = sentence_end.search(buffer)
-            if not m:
-                break
-            end = m.end()
-            chunk = buffer[:end].strip()
-            buffer = buffer[end:]
-            if chunk:
-                engine.say(chunk)
-                engine.runAndWait()
+            # chunk where sentences end or commas are place for a good mix of streaming with natural pauses
+            while True:
+                match = re.search(r'(.+?[,.!?])(\s+|$)', buffer)
+                if not match:
+                    break
+                sentence = match.group(1).strip()
+                if sentence:
+                    q.put(sentence)
+                # remove the flushed sentence from buffer
+                buffer = buffer[match.end():].lstrip()
 
-    for piece in text_stream:
-        buffer += piece
-        flush_sentence_chunks()
-        if len(buffer) >= min_chars and " " in buffer:
-            cut = buffer.rfind(" ", 0, max(min_chars, buffer.find(" ") + 1))
-            if cut > 0:
-                engine.say(buffer[:cut].strip())
-                engine.runAndWait()
-                buffer = buffer[cut+1:]
-
-    if buffer.strip():
-        engine.say(buffer.strip())
-        engine.runAndWait()
-
-    engine.stop()
+        # Flush leftover if anything remains (in case no period at the end)
+        if buffer.strip():
+            q.put(buffer.strip())
+    finally:
+        q.put("__STOP__")
+        tts_thread.join()
 
 
 if __name__ == "__main__":
