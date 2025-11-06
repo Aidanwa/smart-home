@@ -1,7 +1,14 @@
 from smart_home.utils.voice_utils import streaming_tts, speech_to_text, text_to_speech
 from smart_home.agentic.agents.weather_agent import WeatherAgent
 from smart_home.agentic.agents.agent import Agent
+import os
 
+# Load .env early
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 # Can pass in prebuilt agent or will create a default one
 def converse_with_agent_stream(agent:Agent|None=None):
@@ -47,6 +54,34 @@ def converse_with_weather_agent():
         text_to_speech(full_response)
 
 
+def converse_with_custom_agent():
+    sysprompt = input("Enter system prompt for custom agent (or press Enter for default): ")
+    agent = Agent(system_prompt=sysprompt.strip())
+    while True:
+        if os.getenv("SPEECH_TO_TEXT", "False").lower() == "true":
+            user_input = speech_to_text(play_sounds=True)
+            print("You:", user_input)
+        else:
+            user_input = input("You: ")
+        if user_input.lower() == "stop" or user_input.lower() == "exit":
+            print("Exiting the conversation.")
+            break
+
+        def response_stream():
+            for chunk in agent.stream(user_input):
+                print(chunk, end="", flush=True)
+                yield chunk
+
+        print("\nAI: ", end="")
+
+        if os.getenv("TEXT_TO_SPEECH", "False").lower() == "true":
+            streaming_tts(response_stream(), voice="Zira")
+        else:
+            for _ in response_stream():
+                pass
+        print("\n")
+
+
 if __name__ == "__main__":
-    agent = WeatherAgent()
-    converse_with_agent_stream(agent)
+    
+    converse_with_custom_agent()

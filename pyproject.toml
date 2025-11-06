@@ -15,4 +15,5 @@ dependencies = [
     "sounddevice>=0.5.2",
     "pyttsx3>=2.99",
     "simpleaudio>=1.0.4",
+    "openai>=2.7.1",
 ]
