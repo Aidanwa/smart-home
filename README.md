@@ -29,23 +29,23 @@ Agents can reason about your environment, call tools such as weather or light co
 ## Setup
 
 ### 1. Clone and enter the project
-'''
+```
 git clone https://github.com/yourusername/smart-home.git
 cd smart-home
-'''
+```
 
 ### 2. Environment setup
 Install dependencies using either `uv` or pip:
 
-'''
+```
 uv sync
 # or
 pip install -r requirements.txt
-'''
+```
 
 Create a `.env` file at the project root:
 
-'''
+```
 # --- choose one backend ---
 
 # For OpenAI:
@@ -54,7 +54,7 @@ OPENAI_MODEL=gpt-4.1-mini
 
 # Optional (used by WeatherTool)
 COORDS=37.77,-122.42
-'''
+```
 
 If `OPENAI_API_KEY` is set, the agent uses the OpenAI **Responses API**.  
 If not, it automatically falls back to **Ollama** running locally.
@@ -67,10 +67,10 @@ Ollama provides fast, private local LLM inference.
 
 Install and pull the lightweight tool-calling model:
 
-'''
+```
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.1:8b
-'''
+```
 
 Ollama runs a background service on:
 ```
@@ -78,9 +78,9 @@ http://localhost:11434
 ```
 
 Test it with:
-'''
+```
 curl http://localhost:11434/api/tags
-'''
+```
 
 ---
 
@@ -105,27 +105,27 @@ Model name:
 
 Place it in a top-level directory:
 
-'''
+```
 smart-home/
 ├── models/
 │   └── vosk-model-small-en-us-0.15/
 └── src/
-'''
+```
 
 ---
 
 ## Example Usage
 
-'''
+```
 uv run python src/smart_home/driver.py
-'''
+```
 
 Example commands inside the app:
-'''
+```
 Prompt: turn on the bedroom light
 Prompt: what's the weather like?
 Prompt: exit
-'''
+```
 
 ---
 
