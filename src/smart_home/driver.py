@@ -2,6 +2,7 @@ from smart_home.utils.voice_utils import streaming_tts, speech_to_text, text_to_
 from smart_home.agentic.agents.weather_agent import WeatherAgent
 from smart_home.agentic.agents.agent import Agent
 import os
+import json
 
 # Load .env early
 try:
@@ -10,59 +11,32 @@ try:
 except Exception:
     pass
 
-# Can pass in prebuilt agent or will create a default one
-def converse_with_agent_stream(agent:Agent|None=None):
-    if agent is None:
-        agent = Agent(system_prompt="You are a helpful friendly smart home assistant.")
-    while True:
-        user_input = speech_to_text(play_sounds=True)
-        if user_input.lower() == "stop":
-            print("Exiting the conversation.")
-            break
 
-        print(f"User asked: {user_input}")
+NAME_TO_AGENT = {
+    "weather": WeatherAgent,
+}
 
-        def response_stream():
-            for chunk in agent.stream(user_input):
-                print(chunk, end="", flush=True)
-                yield chunk
-
-        streaming_tts(response_stream())
-        print()
+def select_agent_by_name(name: str) -> Agent|None:
+    agent_class = NAME_TO_AGENT.get(name.lower())
+    if agent_class:
+        return agent_class()
+    return None
 
 
-def converse_with_weather_agent():
-    agent = WeatherAgent()
-    while True:
-        user_input = speech_to_text(play_sounds=True)
-        if user_input.lower() == "stop":
-            print("Exiting the conversation.")
-            break
+def converse_with_agent(Agent:Agent|None=None):
+    if Agent is not None:
+        agent = Agent
+    else:
+        sysprompt = input("Enter system prompt for custom agent (or press Enter for default): ")
+        agent = Agent(system_prompt=sysprompt.strip())
 
-        print(f"User asked: {user_input}")
-
-        # Collect full response
-        response_chunks = []
-        for chunk in agent.stream(user_input):
-            print(chunk, end="", flush=True)
-            response_chunks.append(chunk)
-
-        full_response = "".join(response_chunks)
-        print("\nAgent response:", full_response)
-
-        # Speak the response
-        text_to_speech(full_response)
-
-
-def converse_with_custom_agent():
-    sysprompt = input("Enter system prompt for custom agent (or press Enter for default): ")
-    agent = Agent(system_prompt=sysprompt.strip())
     while True:
         if os.getenv("SPEECH_TO_TEXT", "False").lower() == "true":
             user_input = speech_to_text(play_sounds=True)
             print("You:", user_input)
         else:
             user_input = input("You: ")
+
         if user_input.lower() == "stop" or user_input.lower() == "exit":
             print("Exiting the conversation.")
             break
@@ -80,8 +54,23 @@ def converse_with_custom_agent():
             for _ in response_stream():
                 pass
         print("\n")
+        with open("debug_messages.json", "w", encoding="utf-8") as f: 
+            json.dump(agent.messages, f, ensure_ascii=False, indent=2)
+
+
+
+def main():
+    agent_name = input("Enter agent name (or press Enter for custom agent): ").strip()
+    if agent_name:
+        agent = select_agent_by_name(agent_name)
+        if agent is None:
+            print(f"No agent found with the name '{agent_name}'. Exiting.")
+            return
+        print(f"Using '{agent_name}' agent for conversation.")
+        converse_with_agent(Agent=agent)
+    else:
+        converse_with_agent()
 
 
 if __name__ == "__main__":
-    
-    converse_with_custom_agent()
+    main()

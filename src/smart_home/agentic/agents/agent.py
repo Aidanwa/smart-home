@@ -10,29 +10,38 @@ try:
 except Exception:
     pass
 
-# Lazy OpenAI import + client
-_OpenAIClient = None
-def _get_openai_client():
-    global _OpenAIClient
-    if _OpenAIClient is not None:
-        return _OpenAIClient
-    try:
-        from openai import OpenAI
-    except Exception as e:
-        raise RuntimeError(
-            "The 'openai' package is required. Install with 'uv add openai' or 'pip install openai'."
-        ) from e
-    _OpenAIClient = OpenAI()  # uses OPENAI_API_KEY from env
-    return _OpenAIClient
+OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
 
 class Tool:
     """Base tool class. Subclasses should implement .call(**kwargs) -> str."""
-    def __init__(self, name: str, schema: dict):
-        # schema must be OpenAI-compatible function tool:
-        # {"type":"function","function":{"name":"...", "description":"...", "parameters":{...}}}
+    def __init__(self, name: str, description: str, params: dict):
         self.name = name
-        self.schema = schema
+        self.description = description
+        self.parameters = params
+
+        self.schema = self.construct_schema()
+
+    def construct_schema(self) -> dict:
+        if os.getenv("USE_OPENAI", False).lower() == "true":
+            self.parameters['additionalProperties'] = False
+            return {
+                "type": "function",
+                "name": self.name,
+                "description": self.description or "",
+                "parameters": self.parameters or {},
+                "strict": True,
+            }
+        else:
+            return {
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "description": self.description or "",
+                    "parameters": self.parameters or {},
+                }
+            }
 
 
 class Agent:
@@ -60,8 +69,8 @@ class Agent:
         if self.system_prompt:
             self.messages.append({"role": "system", "content": self.system_prompt})
 
-        # Prefer OPENAI_ env if present; otherwise leave your provided default model (ollama)
-        env_model = os.getenv("OPENAI_MODEL", "").strip()
+        # Prefer OPENAI_ env if USE_OPENAI; otherwise leave your provided default model (ollama)
+        env_model = os.getenv("OPENAI_MODEL", "").strip() if os.getenv("USE_OPENAI", "False").lower() == "true" else ""
         if env_model:
             self.model = env_model
 
@@ -152,13 +161,6 @@ class Agent:
     # ---------- OpenAI streaming (Responses API only) ----------
 
     def _stream_openai(self, max_tool_loops: int) -> Iterable[str]:
-        """
-        Tool loop with streaming:
-        1) stream assistant text + function-call deltas
-        2) if calls present, run tools, append tool results, and iterate
-        3) otherwise finalize the turn and return
-        """
-        client = _get_openai_client()
         model = self.model
         loop_count = 0
 
@@ -168,99 +170,167 @@ class Agent:
                 break
 
             assistant_text_parts: List[str] = []
-            pending_calls: Dict[str, Dict[str, Any]] = {}  # call_id -> {"name": str, "args_json": str}
+            # item_id -> {"name": str, "call_id": str, "args": [str], "args_json": str, "ready": bool}
+            pending_calls: Dict[str, Dict[str, Any]] = {}
+            # also keep a list of completed function_call items to append to history verbatim
+            emitted_function_calls: List[dict] = []
 
-            # Stream with Responses API
-            with client.responses.stream(
-                model=model,
-                input=self.messages,
-                tools=self.tools_schema
-            ) as stream:
-                for event in stream:
-                    etype = getattr(event, "type", None)
+            body = {
+                "model": model,
+                "input": self.messages,            # persistent history (role'd messages + prior items)
+                "tools": self.tools_schema or [],
+                "tool_choice": "auto",
+                "parallel_tool_calls": True,
+                "stream": True,
+            }
 
-                    # Assistant text tokens
+            url = f"{OPENAI_API_BASE}/responses"
+
+            with requests.post(url, headers=self._openai_headers(), data=self._json(body), stream=True) as resp:
+                if resp.status_code != 200:
+                    try:
+                        err = resp.json()
+                    except Exception:
+                        err = {"error": resp.text}
+                    raise RuntimeError(f"OpenAI Responses API error: {err}")
+
+                # ---- SSE event loop ----
+                for etype, data in self._sse_events(resp, debug=False):
+                    # 1) Streamed assistant text tokens
                     if etype == "response.output_text.delta":
-                        delta = event.delta or ""
-                        assistant_text_parts.append(delta)
-                        yield delta
+                        delta = data.get("delta") or ""
+                        if delta:
+                            assistant_text_parts.append(delta)
+                            yield delta
+                        continue
 
-                    # Function call name and arguments arrive as deltas; reconstruct by call_id
-                    elif etype == "response.function_call.name.delta":
-                        cid = event.id
-                        rec = pending_calls.setdefault(cid, {"name": "", "args_json": ""})
-                        rec["name"] += (event.delta or "")
+                    # 2) New function_call item — capture name & call_id
+                    if etype == "response.output_item.added":
+                        item = data.get("item") or {}
+                        if item.get("type") == "function_call":
+                            item_id = item.get("id")
+                            if item_id:
+                                rec = pending_calls.setdefault(
+                                    item_id, {"name": "", "call_id": None, "args": [], "ready": False}
+                                )
+                                if item.get("name"):
+                                    rec["name"] = item["name"]
+                                if item.get("call_id"):
+                                    rec["call_id"] = item["call_id"]
+                        continue
 
-                    elif etype == "response.function_call.arguments.delta":
-                        cid = event.id
-                        rec = pending_calls.setdefault(cid, {"name": "", "args_json": ""})
-                        rec["args_json"] += (event.delta or "")
+                    # 3) JSON args fragments (accumulate)
+                    if etype == "response.function_call_arguments.delta":
+                        item_id = data.get("item_id")
+                        frag = data.get("delta") or ""
+                        if item_id and frag:
+                            rec = pending_calls.setdefault(
+                                item_id, {"name": "", "call_id": None, "args": [], "ready": False}
+                            )
+                            rec["args"].append(frag)
+                        continue
 
-                    # Optional: you can check for completion events here
-                    elif etype in ("response.completed", "response.output_text.done"):
-                        pass
+                    # 4) Args finished — mark ready and prepare a function_call item we can persist
+                    if etype == "response.function_call_arguments.done":
+                        item_id = data.get("item_id")
+                        if item_id and item_id in pending_calls:
+                            rec = pending_calls[item_id]
+                            args_json = "".join(rec["args"]) if rec["args"] else "{}"
+                            rec["args_json"] = args_json
+                            rec["ready"] = True
+                        continue
 
-                    elif etype == "response.error":
-                        raise RuntimeError(getattr(event, "error", "Unknown OpenAI streaming error"))
+                    # 5) Item completed — second ready signal; build final function_call item
+                    if etype == "response.output_item.done":
+                        item = data.get("item") or {}
+                        if item.get("type") == "function_call":
+                            item_id = item.get("id")
+                            if item_id and item_id in pending_calls:
+                                rec = pending_calls[item_id]
+                                # ensure args_json
+                                if not rec.get("args_json"):
+                                    rec["args_json"] = "".join(rec["args"]) if rec["args"] else "{}"
+                                rec["ready"] = True
+                                # create a function_call item that mirrors what Responses would return in .output
+                                fn_name = rec.get("name") or item.get("name") or ""
+                                call_id = rec.get("call_id") or item.get("call_id")
+                                arguments = rec.get("args_json", "{}")
+                                emitted_function_calls.append({
+                                    "id": item_id,
+                                    "type": "function_call",
+                                    "status": "completed",
+                                    "name": fn_name,
+                                    "call_id": call_id,
+                                    "arguments": arguments,
+                                })
+                        continue
 
-                # Forces final object to be materialized (usage, etc.), and raises if there was an error
-                _ = stream.get_final_response()
+                    # 6) Model-side error
+                    if etype == "response.error":
+                        err = data.get("error", "Unknown OpenAI streaming error")
+                        raise RuntimeError(str(err))
 
-            # If the model asked to call tools, execute them and continue the loop
-            if pending_calls:
-                loop_count += 1
-                print(f"\n[Tool call requested: {list(pending_calls.values())}]\n")
-
-                # Record the assistant turn with the tool_calls for a faithful transcript
+            # ---- After streaming: persist streamed assistant text (if any)
+            if assistant_text_parts:
                 self.messages.append({
                     "role": "assistant",
-                    "content": "".join(assistant_text_parts),
-                    "tool_calls": [
-                        {
-                            "id": cid,
-                            "type": "function",
-                            "function": {
-                                "name": info.get("name", ""),
-                                "arguments": self._raw_or_empty_json(info.get("args_json", "")),
-                            },
-                        }
-                        for cid, info in pending_calls.items()
-                    ],
+                    "content": [{"type": "output_text", "text": "".join(assistant_text_parts)}],
                 })
+                assistant_text_parts = []
 
-                # Execute each tool and append a tool message (with tool_call_id)
-                for cid, info in pending_calls.items():
-                    fn = (info.get("name") or "").strip()
-                    args_obj = self._parse_json_object(info.get("args_json", ""))
+            # ---- Persist the function_call items into history (docs-style)
+            # (Now the tool calls live in input; no need for previous_response_id.)
+            if emitted_function_calls:
+                self.messages += emitted_function_calls  # append list of dict items directly
+
+            # ---- Execute tools and persist function_call_output items
+            if any(rec.get("ready") for rec in pending_calls.values()):
+                loop_count += 1
+
+                for item_id, rec in pending_calls.items():
+                    if not rec.get("ready"):
+                        continue
+
+                    fn_name = (rec.get("name") or "").strip()
+                    call_id = rec.get("call_id")
+                    if not fn_name or not call_id:
+                        print(f"[WARN] Missing name/call_id for tool item {item_id}, skipping.")
+                        continue
+
+                    # Parse args JSON
+                    args_obj = self._parse_json_object(rec.get("args_json", "")) or {}
+
+                    # Execute your local tool
+                    tool_found = False
+                    result_payload = ""
                     for tool in self.tools:
-                        if tool.name == fn:
-                            result = tool.call(**(args_obj if isinstance(args_obj, dict) else {}))
-                            self.messages.append({
-                                "role": "tool",
-                                "tool_call_id": cid,
-                                "name": fn,
-                                "content": result if isinstance(result, str) else json.dumps(result),
-                            })
-                            print(f"[Tool {fn} executed → {result}]\n")
+                        if tool.name == fn_name:
+                            tool_found = True
+                            try:
+                                result = tool.call(**args_obj)
+                            except Exception as ex:
+                                result = f"Tool execution error: {ex}"
+                            # function_call_output.output expects a string
+                            result_payload = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+                            break
+                    if not tool_found:
+                        result_payload = f"[Tool '{fn_name}' not found]"
 
-                # Go back for another assistant turn (with tool results included)
+                    # Persist function_call_output item into history (docs example style)
+                    self.messages.append({
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": result_payload,
+                    })
+
+                # Kick off a fresh assistant turn with expanded history (includes function_call + outputs)
+                # By design we do NOT set previous_response_id here, because history contains the calls.
                 continue
 
-            # No tools used — finalize assistant message and exit loop
-            if assistant_text_parts:
-                self.messages.append({"role": "assistant", "content": "".join(assistant_text_parts)})
+            # ---- No tool calls this turn: finish
             break
 
     # ---------- Utilities ----------
-
-    @staticmethod
-    def _raw_or_empty_json(s: str) -> str:
-        """Ensure we store a raw JSON string for tool_calls; default to '{}' if blank/bad."""
-        s = (s or "").strip()
-        if not s:
-            return "{}"
-        # we don't validate here; keep raw to preserve exact payload
-        return s
 
     @staticmethod
     def _parse_json_object(s: str) -> Any:
@@ -269,21 +339,71 @@ class Agent:
             return json.loads(s) if s else {}
         except Exception:
             return {}
+        
+    @staticmethod
+    def _openai_headers() -> Dict[str, str]:
+        if not OPENAI_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY is missing.")
+        return {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
 
-# ---------- CLI ----------
+    @staticmethod
+    def _sse_events(response: requests.Response, *, debug: bool = False):
+        """
+        Robust SSE parser for OpenAI Responses API.
+        Flushes on blank lines, handles multi-line JSON, ignores comments.
+        """
+        event = None
+        data_lines = []
 
-if __name__ == "__main__":
-    while True:
-        prompt = input("Prompt: ").strip()
-        if prompt == "exit":
-            break
-        if not prompt:
-            raise SystemExit("A non-empty prompt is required.")
+        def flush():
+            nonlocal event, data_lines
+            if not data_lines:
+                return
+            payload = "\n".join(data_lines)
+            data_lines = []
+            if payload.strip() == "[DONE]":
+                raise StopIteration
+            try:
+                data = json.loads(payload)
+            except Exception:
+                data = {"raw": payload}
+            yield (event, data)
+            event = None
 
-        agent = Agent(system_prompt="You are a helpful smart home assistant.")
+        for raw in response.iter_lines(chunk_size=8192, decode_unicode=True):
+            if raw is None:
+                continue
+            if debug:
+                print(raw)
 
-        for chunk in agent.stream(prompt):
-            print(chunk, end="", flush=True)
-        print()
+            line = raw.lstrip("\ufeff")
+            if not line:
+                yield from flush()
+                continue
 
-    print(agent.messages)
+            if line.startswith(":"):
+                continue  # comment/heartbeat
+            if line.startswith("event:"):
+                event = line.split(":", 1)[1].strip() or None
+                continue
+            if line.startswith("data:"):
+                data_lines.append(line.split(":", 1)[1].strip())
+                continue
+
+            # Fallback (treat unknown fields as data continuation)
+            data_lines.append(line.strip())
+
+        yield from flush()
+
+
+    @staticmethod
+    def _json(obj) -> str:
+        try:
+            return json.dumps(obj)
+        except Exception:
+            return "{}"
+        

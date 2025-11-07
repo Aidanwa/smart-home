@@ -9,34 +9,27 @@ class WeatherTool(Tool):
     """Tool that fetches current weather information for a given location."""
 
     def __init__(self):
-        schema = {
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Fetch current weather for a location, or 'home' if none is given",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "City, region, or 'home' for default location",
-                            "default": "home"
-                        }
-                    },
-                    "required": ["location"]
+        name = "get_weather"
+        description = "Fetch current weather for a location, or 'home' if none is given"
+        params = {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string",
+                    "description": "City, region, or 'home' for default location",
+                    "default": "home"
                 }
-            }
+            },
+            "required": ["location"] # Must have all params required, allow null as valid type if param is optional
         }
 
-        super().__init__(
-            name="get_weather",
-            schema=schema
-        )
+        super().__init__(name, description, params)
+
 
     def call(self, location: str = 'home') -> str:
         """Fetch weather info in JSON format and return a summary string."""
 
-        url = f"http://wttr.in/{location}?format=j1" if location != 'home' else f"http://wttr.in/{os.getenv("COORDS")}?format=j1"
+        url = f"http://wttr.in/{location}?format=j1" if location != 'home' else f"http://wttr.in/{os.getenv('COORDS')}?format=j1"
 
         try:
             res = requests.get(url, timeout=5)
@@ -57,21 +50,3 @@ class WeatherTool(Tool):
         except Exception as e:
             return f"Error fetching weather: {e}"
         
-
-if __name__ == "__main__":
-
-    weather_agent = Agent(system_prompt="You are a helpful assistant. Use your tools to answer questions", tools=[WeatherTool()])
-
-    while True:
-        prompt = input("Prompt: ").strip()
-        if prompt == "exit":
-            break
-
-        if not prompt:
-            raise SystemExit("A non-empty prompt is required.")
-
-        for chunk in weather_agent.stream(prompt):
-            print(chunk, end="", flush=True)
-        print()
-
-    print(weather_agent.messages)

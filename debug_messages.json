@@ -1,0 +1,84 @@
+[
+  {
+    "role": "system",
+    "content": "\n    Keep responses short and clear. Only respond to the user in english.\n It is 2025-11-06 21:49"
+  },
+  {
+    "role": "user",
+    "content": "whats the weather"
+  },
+  {
+    "id": "fc_069da90f7980571400690d5e38ed308196914f145aa36c22d2",
+    "type": "function_call",
+    "status": "completed",
+    "name": "get_weather",
+    "call_id": "call_cnWpkhM7CxoAKbdaadZUbpGe",
+    "arguments": "{\"location\":\"home\"}"
+  },
+  {
+    "type": "function_call_output",
+    "call_id": "call_cnWpkhM7CxoAKbdaadZUbpGe",
+    "output": "The weather in home is partly cloudy, with a temperature of 49°F (feels like 49°F). Humidity is 66%. Tell this to the user."
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "The weather at your location is partly cloudy with a temperature of 49°F, feeling like 49°F, and humidity at 66%."
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": "thanks"
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "You're welcome! If you need anything else, just ask."
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": "has it changed?"
+  },
+  {
+    "id": "fc_069da90f7980571400690d5e52f84c81968a3e56c094a64669",
+    "type": "function_call",
+    "status": "completed",
+    "name": "get_weather",
+    "call_id": "call_IQUN41zlBlRsEIV4BuzxZavS",
+    "arguments": "{\"location\":\"home\"}"
+  },
+  {
+    "type": "function_call_output",
+    "call_id": "call_IQUN41zlBlRsEIV4BuzxZavS",
+    "output": "The weather in home is partly cloudy, with a temperature of 49°F (feels like 49°F). Humidity is 66%. Tell this to the user."
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "The weather hasn't changed. It is still partly cloudy with a temperature of 49°F, feeling like 49°F, and humidity at 66%."
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": "What time is it?"
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "The current time is 21:49 (9:49 PM)."
+      }
+    ]
+  }
+]

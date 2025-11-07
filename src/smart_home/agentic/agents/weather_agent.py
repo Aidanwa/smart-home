@@ -7,14 +7,13 @@ WEATHER_SYSTEM_PROMPT = """
 """
 
 class WeatherAgent(Agent):
-    """An agent specialized for answering weather questions."""
+    """An agent specialized for answering weather questions. You have access to the WeatherTool, which gets the weather for a given location."""
 
     def __init__(self):
 
         super().__init__(
             system_prompt=WEATHER_SYSTEM_PROMPT,
             tools=[WeatherTool()],
-            model="llama3.1:8b",
             include_time=True
         )
 

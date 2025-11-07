@@ -49,11 +49,11 @@ Create a `.env` file at the project root:
 # --- choose one backend ---
 
 # For OpenAI:
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4.1-mini
+OPENAI_API_KEY=
+OPENAI_MODEL=
 
 # Optional (used by WeatherTool)
-COORDS=37.77,-122.42
+COORDS=
 ```
 
 If `OPENAI_API_KEY` is set, the agent uses the OpenAI **Responses API**.  
