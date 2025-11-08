@@ -208,3 +208,6 @@ __marimo__/
 
 # TTS models
 models/
+
+# Debug messages
+debug_messages.json

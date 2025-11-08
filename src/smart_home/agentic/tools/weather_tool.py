@@ -1,52 +1,302 @@
-import requests
 import os
-from smart_home.agentic.agents.agent import Tool, Agent
+import time
+import requests
+from typing import Any, Dict
+from datetime import datetime, timezone, timedelta
+
+from smart_home.agentic.agents.agent import Tool
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class WeatherTool(Tool):
-    """Tool that fetches current weather information for a given location."""
 
     def __init__(self):
         name = "get_weather"
-        description = "Fetch current weather for a location, or 'home' if none is given"
+        description = (
+            "Get weather information from weather.gov with control over time. "
+        )
         params = {
             "type": "object",
             "properties": {
                 "location": {
                     "type": "string",
-                    "description": "City, region, or 'home' for default location",
+                    "description": "Either 'home' or 'lat,lon' (e.g., '38.9,-77.0').",
                     "default": "home"
-                }
+                },
+                "granularity": {
+                    "type": "string",
+                    "enum": ["hourly","daily"],
+                    "description": "Whether to return day/night data or hourly data. Only use hourly if specifically requested. To get night data use 11pm. To get day data, use noon",
+                    "default": "daily"
+                },
+                "forecast_times_iso": {
+                    "type": "string",
+                    "description": "ISO-8601 timestamp to get forecast for. Only use future times. To get current weather, use 'now'",
+                    "default":"now"
+                },
             },
-            "required": ["location"] # Must have all params required, allow null as valid type if param is optional
+            "required": ["location", "forecast_times_iso", "granularity"]
         }
-
         super().__init__(name, description, params)
 
+        self.session = requests.Session()
+        self.base = "https://api.weather.gov"
+        self.timeout = 8.0
+        self.user_agent = os.getenv(
+            "WEATHER_USER_AGENT",
+            "SmartHomeAssistant/1.0 (contact: you@example.com)"
+        )
+        self.home_grid = os.getenv("HOME_GRID", "").strip()
 
-    def call(self, location: str = 'home') -> str:
-        """Fetch weather info in JSON format and return a summary string."""
+        self.session.headers.update({
+            "User-Agent": self.user_agent,
+            "Accept": "application/ld+json, application/json"
+        })
 
-        url = f"http://wttr.in/{location}?format=j1" if location != 'home' else f"http://wttr.in/{os.getenv('COORDS')}?format=j1"
-
+    def call(
+        self,
+        granularity: str = "daily",
+        forecast_times_iso: str = "now",
+        location: str = "home",
+    ) -> str:
         try:
-            res = requests.get(url, timeout=5)
-            res.raise_for_status()
-            data = res.json()
+            lat, lon, grid = self._resolve_location(location)
+            # Build forecast URLs
+            if grid:
+                grid_id, grid_x, grid_y = grid
+                forecast_url = f"{self.base}/gridpoints/{grid_id}/{grid_x},{grid_y}/forecast"
+                hourly_url = f"{forecast_url}/hourly"
+            else:
+                points = self._points(lat, lon)
+                forecast_url = points["forecast"]
+                hourly_url = points["forecastHourly"]
 
-            current = data["current_condition"][0]
+            if granularity == "hourly":
+                hourly = self._get_json(hourly_url)
+                # print(json.dumps(hourly, indent=2))
+                summary_str = summarize_nws_hourly(
+                    hourly["periods"],
+                    forecast_times_iso,
+                    units="F",
+                )
+            else:  # "daily" (default)
+                daily = self._get_json(forecast_url)
+                # print(json.dumps(daily, indent=2))
+                summary_str = summarize_nws_daily(
+                    daily["periods"],
+                    forecast_times_iso,
+                    units="F",
+                )
 
-            summary = (
-                f"The weather in {location} is {current['weatherDesc'][0]['value'].lower()}, "
-                f"with a temperature of {current['temp_F']}°F "
-                f"(feels like {current['FeelsLikeF']}°F). "
-                f"Humidity is {current['humidity']}%. Tell this to the user."
-            )
-
-            return summary
+            return summary_str
 
         except Exception as e:
-            return f"Error fetching weather: {e}"
-        
+            print(f"WeatherTool error: {e}")
+            return  f"Error: {e}"
+
+
+    # ----- resolution / http -----
+    def _resolve_location(self, location: str):
+        if location.lower() == "home":
+            if self.home_grid and self.home_grid.count(",") == 2:
+                grid_id, x_s, y_s = [p.strip() for p in self.home_grid.split(",")]
+                return None, None, (grid_id, int(x_s), int(y_s))
+            raise ValueError("Home location not configured correctly (set HOME_GRID env var).")
+        if "," in location:
+            lat_s, lon_s = location.split(",", 1)
+            return float(lat_s.strip()), float(lon_s.strip()), None
+        raise ValueError("Provide 'home' or explicit 'lat,lon' (geocoding not enabled).")
+
+    def _points(self, lat: float, lon: float) -> Dict[str, Any]:
+        url = f"{self.base}/points/{lat:.4f},{lon:.4f}"
+        return self._get_json(url)
+
+    def _get_json(self, url: str) -> Dict[str, Any]:
+        last = None
+        for i in range(3):
+            try:
+                r = self.session.get(url, timeout=self.timeout)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                print(f"WeatherTool error: {e}")
+                last = e
+                time.sleep(0.25 * (i + 1))
+        raise last
+
+# ----- shaping -----
+def _parse_iso(s: str) -> datetime:
+    return datetime.fromisoformat(s)
+
+def _hour_key_utc(dt: datetime) -> datetime:
+    """Convert to UTC and round to the top of the hour; keep tz-aware UTC."""
+    return dt.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+
+def _c_to_f(c: float | None) -> float | None:
+    return None if c is None else (c * 9 / 5 + 32)
+
+def _fmt_temp(c: float | None, currUnits: str, units: str = "F") -> str:
+    if currUnits.lower() == units.lower():
+        return f"{c}{units}"
+    if c is None:
+        return "—"
+    return f"{round(_c_to_f(c))}°F" if units.upper() == "F" else f"{round(c)}°C"
+
+def _fmt_percent(v) -> str:
+    try:
+        return f"{int(round(float(v)))}%"
+    except Exception:
+        return "—"
+
+def _time_label(dt: datetime) -> str:
+    try:
+        return dt.strftime("%a %-I %p")
+    except ValueError:
+        return dt.strftime("%a %#I %p")
+
+
+# --------------------------------
+# Single-period: HOURLY (one hour)
+# --------------------------------
+def summarize_hour(period: dict, units: str = "F") -> str:
+    """Concise, single-line summary for one hourly NWS period."""
+    start = _parse_iso(period["startTime"])
+    when = _time_label(start)
+
+    temp = _fmt_temp((period.get("temperature") or {}), period.get("temperatureUnit"), units)
+    pop  = _fmt_percent((period.get("probabilityOfPrecipitation") or {}).get("value"))
+    wind_dir = period.get("windDirection") or "—"
+    wind_spd = period.get("windSpeed") or "—"
+    short    = period.get("shortForecast") or "—"
+
+    # Medium-style: time, short, temp, wind, precip
+    return f"{when}: {short}, {temp}; wind {wind_dir} {wind_spd}; precip {pop}."
+
+
+def summarize_nws_hourly(
+    periods: list,
+    forecast_time_iso: str,
+    units: str = "F",
+    fallback_to_nearest: bool = True,
+    fallback_window_hours: int = 1,
+    snap_to_bounds: bool = False,
+) -> str:
+    """
+    Return a single summary for the requested ISO time using the NWS hourly endpoint.
+    If forecast_time_iso == 'now' (case-insensitive), return the first period.
+    """
+    if not periods:
+        return "No data available."
+
+    # 'now' → first item
+    if isinstance(forecast_time_iso, str) and forecast_time_iso.lower() == "now":
+        return summarize_hour(periods[0], units)
+
+    # Build index keyed by UTC-rounded start hours
+    index = {}
+    for p in periods:
+        try:
+            k = _hour_key_utc(_parse_iso(p["startTime"]))
+            index[k] = p
+        except Exception:
+            continue
+
+    if not index:
+        return "No data available."
+
+    keys_sorted = sorted(index.keys())
+
+    def _nearest(target: datetime) -> datetime | None:
+        best = min(keys_sorted, key=lambda k: abs(k - target))
+        if abs(best - target) <= timedelta(hours=fallback_window_hours):
+            return best
+        return None
+
+    # Parse request → UTC hour key
+    try:
+        req_key = _hour_key_utc(_parse_iso(forecast_time_iso))
+    except Exception:
+        return "Invalid timestamp."
+
+    period = index.get(req_key)
+
+    if period is None and fallback_to_nearest:
+        nk = _nearest(req_key)
+        if nk:
+            period = index.get(nk)
+
+    if period is None and snap_to_bounds:
+        if req_key < keys_sorted[0]:
+            period = index.get(keys_sorted[0])
+        elif req_key > keys_sorted[-1]:
+            period = index.get(keys_sorted[-1])
+
+    return summarize_hour(period, units) if period else "No data for requested time."
+
+
+# --------------------------------------
+# Single-period: DAY/NIGHT (12-hour bin)
+# --------------------------------------
+def summarize_daynight_period(period: dict, units: str = "F") -> str:
+    """Concise, single-line summary for one 12h day/night NWS period."""
+    name = period.get("name") or _parse_iso(period["startTime"]).strftime("%a")
+
+    temp = _fmt_temp((period.get("temperature") or {}), period.get("temperatureUnit"), units)
+    pop  = _fmt_percent((period.get("probabilityOfPrecipitation") or {}).get("value"))
+    wind_spd = period.get("windSpeed") or "—"
+    wind_dir = period.get("windDirection") or "—"
+    short    = period.get("shortForecast") or "—"
+    hi_lo    = "high" if period.get("isDaytime") else "low"
+
+    # Medium-style: name, short, high/low temp, wind, precip
+    return f"{name}: {short}, {hi_lo} {temp}; wind {wind_dir} {wind_spd}; precip {pop}."
+
+
+def summarize_nws_daily(
+    periods: list,
+    forecast_time_iso: str,
+    units: str = "F",
+) -> str:
+    """
+    Return a single summary for the ISO time using the NWS day/night endpoint.
+    If forecast_time_iso == 'now', return the first period.
+    """
+    if not periods:
+        return "No data available."
+
+    # 'now' → first item
+    if isinstance(forecast_time_iso, str) and forecast_time_iso.lower() == "now":
+        return summarize_daynight_period(periods[0], units)
+
+    # Pre-parse time windows
+    windows = []
+    for p in periods:
+        try:
+            start = _parse_iso(p["startTime"])
+            end   = _parse_iso(p["endTime"])
+            windows.append((start, end, p))
+        except Exception:
+            continue
+
+    if not windows:
+        return "No data available."
+
+    try:
+        t = _parse_iso(forecast_time_iso)
+    except Exception:
+        return "Invalid timestamp."
+
+    target = next((p for (s, e, p) in windows if s <= t < e), None)
+    return summarize_daynight_period(target, units) if target else "No data for requested time."
+
+
+if __name__ == "__main__":
+    # Simple test
+    tool = WeatherTool()
+    result = tool.call(
+        location="home",
+        granularity="hourly",
+        forecast_times_iso="2025-11-08T18:00-05:00",
+    )
+    print("Result:", result)

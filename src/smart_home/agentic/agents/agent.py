@@ -63,7 +63,7 @@ class Agent:
 
         if include_time:
             from datetime import datetime
-            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            now = datetime.now().isoformat(timespec="minutes")
             self.system_prompt += f" It is {now}"
 
         if self.system_prompt:

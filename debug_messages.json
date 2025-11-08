@@ -1,83 +1,83 @@
 [
   {
     "role": "system",
-    "content": "\n    Keep responses short and clear. Only respond to the user in english.\n It is 2025-11-06 21:49"
+    "content": "\n    Keep responses short and clear. Only respond to the user in english.\n It is 2025-11-08T12:47"
   },
   {
     "role": "user",
-    "content": "whats the weather"
+    "content": "whats the weather tonight"
   },
   {
-    "id": "fc_069da90f7980571400690d5e38ed308196914f145aa36c22d2",
+    "id": "fc_0bfa2894ede92caf00690f82494db08193b926678138e8441e",
     "type": "function_call",
     "status": "completed",
     "name": "get_weather",
-    "call_id": "call_cnWpkhM7CxoAKbdaadZUbpGe",
-    "arguments": "{\"location\":\"home\"}"
+    "call_id": "call_M6VP5gl4lUX0vFvp0XSQehup",
+    "arguments": "{\"location\":\"home\",\"granularity\":\"daily\",\"forecast_times_iso\":\"2025-11-08T23:00:00Z\"}"
   },
   {
     "type": "function_call_output",
-    "call_id": "call_cnWpkhM7CxoAKbdaadZUbpGe",
-    "output": "The weather in home is partly cloudy, with a temperature of 49°F (feels like 49°F). Humidity is 66%. Tell this to the user."
+    "call_id": "call_M6VP5gl4lUX0vFvp0XSQehup",
+    "output": "Tonight: Partly Cloudy, low 49F; wind SE 5 mph; precip 11%."
   },
   {
     "role": "assistant",
     "content": [
       {
         "type": "output_text",
-        "text": "The weather at your location is partly cloudy with a temperature of 49°F, feeling like 49°F, and humidity at 66%."
+        "text": "Tonight's weather is expected to be partly cloudy with a low of 49°F. There will be a southeast wind at 5 mph and a 11% chance of precipitation."
       }
     ]
   },
   {
     "role": "user",
-    "content": "thanks"
+    "content": "what about tomorrow at 1pm?"
   },
   {
-    "role": "assistant",
-    "content": [
-      {
-        "type": "output_text",
-        "text": "You're welcome! If you need anything else, just ask."
-      }
-    ]
-  },
-  {
-    "role": "user",
-    "content": "has it changed?"
-  },
-  {
-    "id": "fc_069da90f7980571400690d5e52f84c81968a3e56c094a64669",
+    "id": "fc_0bfa2894ede92caf00690f825afc98819382db6e9a021c0476",
     "type": "function_call",
     "status": "completed",
     "name": "get_weather",
-    "call_id": "call_IQUN41zlBlRsEIV4BuzxZavS",
-    "arguments": "{\"location\":\"home\"}"
+    "call_id": "call_9BWfK14WQwvma8pCkQImzpJU",
+    "arguments": "{\"location\":\"home\",\"granularity\":\"hourly\",\"forecast_times_iso\":\"2025-11-09T13:00:00Z\"}"
   },
   {
     "type": "function_call_output",
-    "call_id": "call_IQUN41zlBlRsEIV4BuzxZavS",
-    "output": "The weather in home is partly cloudy, with a temperature of 49°F (feels like 49°F). Humidity is 66%. Tell this to the user."
+    "call_id": "call_9BWfK14WQwvma8pCkQImzpJU",
+    "output": "Sun 8 AM: Chance Rain Showers, 53F; wind SE 5 mph; precip 42%."
   },
   {
     "role": "assistant",
     "content": [
       {
         "type": "output_text",
-        "text": "The weather hasn't changed. It is still partly cloudy with a temperature of 49°F, feeling like 49°F, and humidity at 66%."
+        "text": "At 1 PM tomorrow, the forecast mentions a chance of rain showers with a temperature around 53°F and southeast wind at 5 mph."
       }
     ]
   },
   {
     "role": "user",
-    "content": "What time is it?"
+    "content": "what about in blacksburg virginia tomorrow?"
+  },
+  {
+    "id": "fc_0bfa2894ede92caf00690f826b0d54819398ea2567d7b0a162",
+    "type": "function_call",
+    "status": "completed",
+    "name": "get_weather",
+    "call_id": "call_dnHIMHuysdV3SuA6CYTz6P2P",
+    "arguments": "{\"location\":\"37.2296,-80.4139\",\"granularity\":\"hourly\",\"forecast_times_iso\":\"2025-11-09T13:00:00Z\"}"
+  },
+  {
+    "type": "function_call_output",
+    "call_id": "call_dnHIMHuysdV3SuA6CYTz6P2P",
+    "output": "Sun 8 AM: Mostly Sunny, 48F; wind SW 3 mph; precip 10%."
   },
   {
     "role": "assistant",
     "content": [
       {
         "type": "output_text",
-        "text": "The current time is 21:49 (9:49 PM)."
+        "text": "In Blacksburg, Virginia, at 1 PM tomorrow, the weather is expected to be mostly sunny with a temperature around 48°F, southwest wind at 3 mph, and a 10% chance of precipitation."
       }
     ]
   }

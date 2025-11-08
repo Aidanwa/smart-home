@@ -7,7 +7,7 @@ WEATHER_SYSTEM_PROMPT = """
 """
 
 class WeatherAgent(Agent):
-    """An agent specialized for answering weather questions. You have access to the WeatherTool, which gets the weather for a given location."""
+    """An agent specialized for answering weather questions. You have access to the WeatherTool, which gets the weather for a """
 
     def __init__(self):
 
