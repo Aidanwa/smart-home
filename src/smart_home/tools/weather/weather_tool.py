@@ -3,8 +3,7 @@ import time
 import requests
 from typing import Any, Dict
 from datetime import datetime, timezone, timedelta
-
-from smart_home.agentic.agents.agent import Tool
+from smart_home.core.agent import Tool
 from dotenv import load_dotenv
 
 load_dotenv()

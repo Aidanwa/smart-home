@@ -3,6 +3,9 @@ import queue
 import threading
 import re
 import sys
+import time
+import queue
+import os, platform, glob
 
 import pyttsx3
 import simpleaudio as sa
@@ -10,6 +13,10 @@ import sounddevice as sd
 import winsound
 from collections.abc import Iterable
 from vosk import Model, KaldiRecognizer
+from openwakeword.model import Model as WakeWordModel
+from openwakeword.utils import download_models as oww_download_models
+import numpy as np
+
 
 # Load the Vosk model globally so it's only initialized once
 model = Model("models/vosk-model-small-en-us-0.15")
@@ -147,7 +154,139 @@ def streaming_tts(chunks: Iterable[str], rate=180, volume=1.0, voice=None):
         tts_thread.join()
 
 
-if __name__ == "__main__":
-    query = speech_to_text(play_sounds=True)
-    print("✅ Final recognized text:", query)
-    text_to_speech(query)
+# --- Wake word helper -------------------------------------------------
+def _pick_inference_framework():
+    # Windows + Py3.13 → ONNX
+    if platform.system() == "Windows":
+        return "onnx"
+    try:
+        import tflite_runtime.interpreter as _  # noqa: F401
+        return "tflite"
+    except Exception:
+        return "onnx"
+
+def _normalize_models_for_framework(paths: list[str], framework: str) -> list[str]:
+    if not paths:
+        return []
+    ext = ".onnx" if framework == "onnx" else ".tflite"
+    return [p for p in paths if p.lower().endswith(ext) and os.path.exists(p)]
+
+
+def _discover_downloaded_models(target_dir: str, framework: str) -> list[str]:
+    pattern = "*.onnx" if framework == "onnx" else "*.tflite"
+    return sorted(glob.glob(os.path.join(target_dir, pattern)))
+
+
+def _download_oww_models_if_needed(framework: str, target_dir: str) -> list[str]:
+    os.makedirs(target_dir, exist_ok=True)
+    try:
+        # One-time download of all pre-trained models into your repo
+        oww_download_models(target_directory=target_dir)
+    except Exception as e:
+        print(f"[wake] Model download failed: {e}")
+        return []
+    return _discover_downloaded_models(target_dir, framework)
+
+
+def _load_wake_model(model_paths: list[str] | None):
+    framework = _pick_inference_framework()
+
+    # Filter any user-provided paths to match the framework
+    chosen = _normalize_models_for_framework(model_paths or [], framework)
+
+    kwargs = {"inference_framework": framework}
+    if chosen:
+        kwargs["wakeword_models"] = chosen
+
+    print(f"[wake] Loading wake model with framework={framework}, "
+          f"custom_models={ [os.path.basename(p) for p in chosen] if chosen else 'built-ins' }")
+
+    try:
+        return WakeWordModel(**kwargs)
+    except Exception as e:
+        msg = str(e)
+        missing_builtin = (
+            "NO_SUCHFILE" in msg
+            or "File doesn't exist" in msg
+            or "resources/models" in msg
+        )
+
+        # If we tried to use built-ins (no custom models) and they aren't on disk, download and retry.
+        if framework == "onnx" and not chosen and missing_builtin:
+            print("[wake] Built-in ONNX models not found locally. Downloading once…")
+            # Keep models alongside your project (not inside site-packages)
+            target_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "openwakeword"))
+            downloaded = _download_oww_models_if_needed(framework, target_dir)
+
+            if downloaded:
+                print(f"[wake] Using downloaded models: {[os.path.basename(p) for p in downloaded]}")
+                return WakeWordModel(inference_framework=framework, wakeword_models=downloaded)
+
+        # Otherwise, surface the original error
+        raise
+
+def wait_for_wake_word(
+    model_paths: list[str] | None = None,
+    threshold: float = 0.5,
+    sample_rate: int = 16000,
+    block_size: int = 512,
+    channel_count: int = 1,
+    idle_print_secs: float = 10.0,
+    play_sounds: bool = False,
+) -> None:
+    """
+    Blocks until a wake word score crosses `threshold`.
+    Then returns (so caller can start STT for the command).
+    """
+    # If no model paths provided, let OWW load its default bundled models.
+    # You can also pass multiple .tflite paths: ["./models/hey_jarvis.tflite", "./models/ok_computer.tflite"]
+    if isinstance(model_paths, str):
+        model_paths = _parse_wake_models(model_paths)
+
+    model = _load_wake_model(model_paths)  # <-- no None passed for wakeword_models
+
+    q: queue.Queue[np.ndarray] = queue.Queue()
+
+    def audio_cb(indata, frames, time_info, status):
+        if status:
+            # You may want to log status (overruns/underruns)
+            pass
+        # indata shape: (frames, channels)
+        q.put(indata.copy())
+
+    last_ping = time.time()
+
+    if play_sounds:
+        play_wav_async("assets/start.wav")
+
+    print("🟡 Listening for wake word…")
+
+    with sd.InputStream(
+        channels=channel_count,
+        samplerate=sample_rate,
+        blocksize=block_size,
+        dtype="float32",
+        callback=audio_cb,
+        latency="low",
+    ):
+        while True:
+            audio = q.get()  # (frames, 1)
+            # Flatten to mono float32 @ 16k for OWW
+            mono = audio[:, 0].astype(np.float32, copy=False)
+
+            # OWW accepts ~10–100ms chunks; this is fine with block_size 512 @ 16kHz (~32ms)
+            scores = model.predict(mono)  # dict: {model_name: score}
+
+            # If any model fires above threshold -> wake
+            if any(score >= threshold for score in scores.values()):
+                print("🟢 Wake word detected.")
+                return
+
+            # Periodic heartbeat so the console doesn’t look frozen
+            if time.time() - last_ping >= idle_print_secs:
+                print("…still listening")
+                last_ping = time.time()
+
+# One-time download of all pre-trained models (or only select models)
+def download_wakeword_models():
+    openwakeword.utils.download_models(target_directory="models/openwakeword")

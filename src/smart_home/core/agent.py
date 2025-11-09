@@ -2,29 +2,26 @@ import os
 import json
 import requests
 from typing import Iterable, Optional, List, Dict, Any
+from dotenv import load_dotenv
 
-# Load .env early
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
+load_dotenv()
 
-OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+PROVIDER = os.getenv("PROVIDER").strip().lower()
+OPENAI_API_BASE = "https://api.openai.com/v1"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+DEFAULT_MODEL = os.getenv("OPENAI_MODEL").strip() if PROVIDER == "openai" else "llama3.1:8b"
 
-
+# ---------- Base Tool Class ----------
 class Tool:
     """Base tool class. Subclasses should implement .call(**kwargs) -> str."""
     def __init__(self, name: str, description: str, params: dict):
         self.name = name
         self.description = description
         self.parameters = params
-
         self.schema = self.construct_schema()
 
     def construct_schema(self) -> dict:
-        if os.getenv("USE_OPENAI", False).lower() == "true":
+        if PROVIDER == "openai":
             self.parameters['additionalProperties'] = False
             return {
                 "type": "function",
@@ -33,7 +30,7 @@ class Tool:
                 "parameters": self.parameters or {},
                 "strict": True,
             }
-        else:
+        elif PROVIDER == "ollama":
             return {
                 "type": "function",
                 "function": {
@@ -42,8 +39,11 @@ class Tool:
                     "parameters": self.parameters or {},
                 }
             }
+        else:
+            raise RuntimeError(f"Unknown provider '{PROVIDER}' for tool schema. Fix your .env PROVIDER value.")
 
 
+# ---------- Base Agent Class ----------
 class Agent:
     """An agent that can interact with a model and use tools (OpenAI Responses API or Ollama fallback)."""
 
@@ -52,10 +52,11 @@ class Agent:
         tools: Optional[List[Tool]] = None,
         messages: Optional[List[Dict[str, Any]]] = None,
         system_prompt: str = "",
-        model: str = "llama3.1:8b",
+        model: Optional[str] = None,
         include_time: bool = False,
+        provider: Optional[str] = None,
     ) -> None:
-        self.model: str = model
+        self.model: str = model or DEFAULT_MODEL
         self.system_prompt: str = system_prompt
         self.tools: List[Tool] = list(tools or [])
         self.tools_schema: List[Dict[str, Any]] = [tool.schema for tool in self.tools] if self.tools else []
@@ -69,13 +70,9 @@ class Agent:
         if self.system_prompt:
             self.messages.append({"role": "system", "content": self.system_prompt})
 
-        # Prefer OPENAI_ env if USE_OPENAI; otherwise leave your provided default model (ollama)
-        env_model = os.getenv("OPENAI_MODEL", "").strip() if os.getenv("USE_OPENAI", "False").lower() == "true" else ""
-        if env_model:
-            self.model = env_model
-
-        self.openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-        self.provider = "openai" if self.openai_key and self.model else "ollama"
+        self.provider = provider or PROVIDER
+        if self.provider == "openai":
+            self.openai_key = OPENAI_API_KEY
 
         print(f"Created agent with provider: {self.provider} | model: {self.model}\n")
 

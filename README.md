@@ -140,3 +140,12 @@ Prompt: exit
 ---
 
 Developed as part of an ongoing personal agentic home automation project.
+
+## Future Ideas: 
+
+- Voice recognition
+- local music library
+- nlp to music requests
+- light integration
+- always listening for keyword loop
+- custom wakeword model
