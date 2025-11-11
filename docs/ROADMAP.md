@@ -20,13 +20,6 @@ This document outlines the planned features, improvements, and ongoing developme
   - Threshold tuning
   - Integration with main conversation loop
 
-- **Implement Testing Infrastructure**: The `tests/` directory exists but is currently empty. Need to add:
-  - Unit tests for core Agent and Tool classes
-  - Integration tests for each agent (Weather, Spotify, Home)
-  - Mock API responses for weather.gov and Spotify
-  - Voice I/O testing utilities
-  - CI/CD pipeline configuration
-
 ### Medium Priority
 
 - **Error Handling Improvements**: Tool errors are not gracefully handled in the agent loop. Should:
@@ -40,18 +33,15 @@ This document outlines the planned features, improvements, and ongoing developme
   - API credential verification
   - Network connectivity checks
 
-- **Ollama Model Configuration**: Currently hardcodes "llama3.1:8b" in [agent.py:164](../src/smart_home/core/agent.py#L164). Should:
-  - Add `OLLAMA_MODEL` environment variable
-  - Support multiple model options
-  - Auto-detect available models via Ollama API
 
 ### Low Priority
 
-- **Conversation History Management**: Currently saves to `debug_messages.json`. Should:
-  - Implement proper session management
-  - Add conversation history truncation
-  - Support multi-turn context windows
-  - Export conversations for analysis
+- **Implement Testing Infrastructure**: The `tests/` directory exists but is currently empty. Need to add:
+  - Unit tests for core Agent and Tool classes
+  - Integration tests for each agent (Weather, Spotify, Home)
+  - Mock API responses for weather.gov and Spotify
+  - Voice I/O testing utilities
+  - CI/CD pipeline configuration
 
 ---
 
@@ -68,8 +58,6 @@ This document outlines the planned features, improvements, and ongoing developme
 
 **Integration:**
 - MQTT/Zigbee2MQTT for local control
-- Philips Hue Bridge API
-- Home Assistant REST API (generic integration)
 
 **Example queries:**
 - "Turn on the bedroom lights"

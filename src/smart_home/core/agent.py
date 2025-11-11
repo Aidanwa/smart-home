@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 PROVIDER = os.getenv("PROVIDER").strip().lower()
 OPENAI_API_BASE = "https://api.openai.com/v1"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL").strip() if PROVIDER == "openai" else "llama3.1:8b"
+DEFAULT_MODEL = os.getenv("OPENAI_MODEL").strip() if PROVIDER == "openai" else os.getenv("OLLAMA_MODEL", "llama3.1:8b").strip()
 
 # ---------- Base Tool Class ----------
 class Tool:

@@ -24,6 +24,7 @@ Guidelines:
 - For “volume X%”, call spotify_set_volume with percent=X.
 - Prefer minimal wording in responses; confirm success or report errors.
 - If only one device is available, use it automatically. Otherwise, ask user to specify.
+- If no devices are available, inform the user to open Spotify on a device.
 """
 
 def _fetch_spotify_devices_for_prompt(timeout: float = 6.0) -> list[dict]:

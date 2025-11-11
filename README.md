@@ -140,6 +140,7 @@ Set in `.env`:
 ```bash
 PROVIDER=ollama
 OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b  # Or mistral, codellama:13b, etc.
 ```
 
 ### Using OpenAI (Cloud Mode)
