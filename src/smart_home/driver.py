@@ -1,18 +1,13 @@
-from smart_home.utils.voice_utils import streaming_tts, speech_to_text, wait_for_wake_word
+from smart_home.utils.voice_utils import streaming_tts, speech_to_text  # , wait_for_wake_word
 from smart_home.agents.weather import WeatherAgent
 from smart_home.agents.spotify import SpotifyAgent
 from smart_home.agents.home import HomeAgent
 from smart_home.core.agent import Agent
 import os
-import json
+from dotenv import load_dotenv
+# from smart_home.config.paths import MODELS_DIR  # Unused while wake word is disabled
 
-# Load .env early
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
-
+load_dotenv()
 
 NAME_TO_AGENT = {
     "weather": WeatherAgent,
@@ -34,13 +29,21 @@ def converse_with_agent(Agent: Agent | None = None):
         sysprompt = input("Enter system prompt for custom agent (or press Enter for default): ")
         agent = Agent(system_prompt=sysprompt.strip())
 
-    wake_threshold = float(os.getenv("WAKE_THRESHOLD", "0.5").strip() or 0.5)
-    wake_model_env = os.getenv("WAKE_MODEL_PATH", "").strip()
-    wake_models = [p.strip() for p in wake_model_env.split(",") if p.strip()] if wake_model_env else None
+    # ------------------------ WAKE WORD DISABLED ------------------------
+    # Wake word detection is currently disabled due to openWakeWord incompatibility
+    # See docs/WAKEWORD_INVESTIGATION.md for details
+    # TODO: Implement Picovoice Porcupine as alternative
+    # --------------------------------------------------------------------
+    # wake_model_dir = MODELS_DIR / "openwakeword"
+    # wake_model = "alexa_v0.1.onnx"
+    # wake_models = [str(wake_model_dir / wake_model)]
+    # --------------------------------------------------------------------
 
     while True:
         if os.getenv("SPEECH_TO_TEXT", "False").lower() == "true":
-            wait_for_wake_word(model_paths=wake_models, threshold=wake_threshold)
+            # WAKE WORD DISABLED - direct STT for now
+            # wait_for_wake_word(model_paths=wake_models, threshold=0.2)
+            print("\nListening...")
             user_input = speech_to_text(play_sounds=True)
             print("You:", user_input)
         else:
@@ -67,8 +70,6 @@ def converse_with_agent(Agent: Agent | None = None):
                 pass
 
         print("\n")
-        with open("debug_messages.json", "w", encoding="utf-8") as f:
-            json.dump(agent.messages, f, ensure_ascii=False, indent=2)
 
 
 def main():

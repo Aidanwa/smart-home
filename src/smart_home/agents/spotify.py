@@ -103,4 +103,5 @@ class SpotifyAgent(Agent):
                 SpotifyVolumeTool(),
             ],
             include_time=True,
+            agent_type="spotify",
         )

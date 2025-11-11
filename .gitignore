@@ -211,3 +211,12 @@ models/
 
 # Debug messages
 debug_messages.json
+
+# Agent conversation logs
+logs/
+
+#Claude stuff
+CLAUDE.md
+.claude
+/claudedocs
+/claudetests/

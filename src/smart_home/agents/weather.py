@@ -24,6 +24,7 @@ class WeatherAgent(Agent):
             system_prompt=WEATHER_SYSTEM_PROMPT,
             tools=[WeatherTool()],
             include_time=include_time,
+            agent_type="weather",
         )
 
 if __name__ == "__main__":

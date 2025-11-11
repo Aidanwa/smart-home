@@ -1,8 +1,11 @@
 import os
 import json
 import requests
+import uuid
+from datetime import datetime
 from typing import Iterable, Optional, List, Dict, Any
 from dotenv import load_dotenv
+from smart_home.config.paths import AGENT_LOGS_DIR
 
 load_dotenv()
 
@@ -55,15 +58,17 @@ class Agent:
         model: Optional[str] = None,
         include_time: bool = False,
         provider: Optional[str] = None,
+        agent_type: str = "agent",
     ) -> None:
         self.model: str = model or DEFAULT_MODEL
         self.system_prompt: str = system_prompt
         self.tools: List[Tool] = list(tools or [])
         self.tools_schema: List[Dict[str, Any]] = [tool.schema for tool in self.tools] if self.tools else []
         self.messages: List[Dict[str, Any]] = list(messages or [])
+        self.agent_id: str = str(uuid.uuid4())
+        self.agent_type: str = agent_type
 
         if include_time:
-            from datetime import datetime
             now = datetime.now().isoformat(timespec="minutes")
             self.system_prompt += f" It is {now}"
 
@@ -74,7 +79,7 @@ class Agent:
         if self.provider == "openai":
             self.openai_key = OPENAI_API_KEY
 
-        print(f"Created agent with provider: {self.provider} | model: {self.model}\n")
+        print(f"Created agent with provider: {self.provider} | model: {self.model} | id: {self.agent_id}\n")
 
     # ---------- Public API ----------
 
@@ -85,6 +90,36 @@ class Agent:
             yield from self._stream_openai(max_tool_loops=max_tool_loops)
         else:
             yield from self._stream_ollama(max_tool_loops=max_tool_loops)
+
+        # Save messages after streaming completes
+        self._save_messages()
+
+    def _save_messages(self) -> None:
+        """Save conversation messages to logs/{agent_type}/{agent_id}_{timestamp}.json"""
+        try:
+            # Create agent-type-specific subdirectory
+            logs_dir = AGENT_LOGS_DIR / self.agent_type
+            logs_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create filename with agent_id and timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            log_file = logs_dir / f"{self.agent_id}_{timestamp}.json"
+
+            # Save messages with metadata
+            log_data = {
+                "agent_id": self.agent_id,
+                "agent_type": self.agent_type,
+                "provider": self.provider,
+                "model": self.model,
+                "timestamp": datetime.now().isoformat(),
+                "messages": self.messages
+            }
+
+            with open(log_file, "w", encoding="utf-8") as f:
+                json.dump(log_data, f, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            print(f"[Warning] Failed to save messages: {e}")
 
     # ---------- Ollama path ----------
 

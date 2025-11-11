@@ -16,7 +16,7 @@ from vosk import Model, KaldiRecognizer
 from openwakeword.model import Model as WakeWordModel
 from openwakeword.utils import download_models as oww_download_models
 import numpy as np
-
+from smart_home.config.paths import MODELS_DIR
 
 # Load the Vosk model globally so it's only initialized once
 model = Model("models/vosk-model-small-en-us-0.15")
@@ -43,7 +43,10 @@ def speech_to_text(play_sounds: bool = False):
     if play_sounds:
         play_wav_async("assets/start.wav")
 
-    print("🎙️ Speak now...")
+    try:
+        print("🎙️ Speak now...")
+    except UnicodeEncodeError:
+        print("Speak now...")
 
     with sd.RawInputStream(
         samplerate=16000,
@@ -198,6 +201,20 @@ def _load_wake_model(model_paths: list[str] | None):
     if chosen:
         kwargs["wakeword_models"] = chosen
 
+    # Always provide preprocessing model paths from our downloaded models directory
+    # This fixes the issue where AudioFeatures looks for melspectrogram.onnx and embedding_model.onnx
+    # in the package's resources/models/ directory (which doesn't exist after pip install)
+    target_dir = os.path.abspath(MODELS_DIR / "openwakeword")
+    ext = ".onnx" if framework == "onnx" else ".tflite"
+    melspec_path = os.path.join(target_dir, f"melspectrogram{ext}")
+    embedding_path = os.path.join(target_dir, f"embedding_model{ext}")
+
+    # Pass preprocessing model paths if they exist
+    if os.path.exists(melspec_path):
+        kwargs["melspec_model_path"] = melspec_path
+    if os.path.exists(embedding_path):
+        kwargs["embedding_model_path"] = embedding_path
+
     print(f"[wake] Loading wake model with framework={framework}, "
           f"custom_models={ [os.path.basename(p) for p in chosen] if chosen else 'built-ins' }")
 
@@ -212,15 +229,22 @@ def _load_wake_model(model_paths: list[str] | None):
         )
 
         # If we tried to use built-ins (no custom models) and they aren't on disk, download and retry.
-        if framework == "onnx" and not chosen and missing_builtin:
-            print("[wake] Built-in ONNX models not found locally. Downloading once…")
+        if framework == "onnx" and missing_builtin:
+            print("[wake] Required ONNX models not found locally. Downloading once…")
             # Keep models alongside your project (not inside site-packages)
-            target_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "openwakeword"))
             downloaded = _download_oww_models_if_needed(framework, target_dir)
 
             if downloaded:
                 print(f"[wake] Using downloaded models: {[os.path.basename(p) for p in downloaded]}")
-                return WakeWordModel(inference_framework=framework, wakeword_models=downloaded)
+                # Retry with proper paths after download
+                if os.path.exists(melspec_path):
+                    kwargs["melspec_model_path"] = melspec_path
+                if os.path.exists(embedding_path):
+                    kwargs["embedding_model_path"] = embedding_path
+                if not chosen:
+                    # Use all downloaded wake word models if none were specified
+                    kwargs["wakeword_models"] = [p for p in downloaded if "melspectrogram" not in p and "embedding_model" not in p and "silero_vad" not in p]
+                return WakeWordModel(**kwargs)
 
         # Otherwise, surface the original error
         raise
@@ -243,15 +267,12 @@ def wait_for_wake_word(
     if isinstance(model_paths, str):
         model_paths = _parse_wake_models(model_paths)
 
-    model = _load_wake_model(model_paths)  # <-- no None passed for wakeword_models
+    model = _load_wake_model(model_paths)  # <-- None passed for wakeword_models
 
     q: queue.Queue[np.ndarray] = queue.Queue()
-
     def audio_cb(indata, frames, time_info, status):
         if status:
-            # You may want to log status (overruns/underruns)
-            pass
-        # indata shape: (frames, channels)
+            print(f"\n[AUDIO ERROR] {status}")
         q.put(indata.copy())
 
     last_ping = time.time()
@@ -259,7 +280,17 @@ def wait_for_wake_word(
     if play_sounds:
         play_wav_async("assets/start.wav")
 
-    print("🟡 Listening for wake word…")
+    # Print audio device info
+    try:
+        device = sd.query_devices(kind='input')
+        print(f"Microphone: {device['name']}")
+    except:
+        print("Microphone: default")
+
+    try:
+        print("🟡 Listening for wake word…")
+    except UnicodeEncodeError:
+        print("Listening for wake word...")
 
     with sd.InputStream(
         channels=channel_count,
@@ -269,24 +300,55 @@ def wait_for_wake_word(
         callback=audio_cb,
         latency="low",
     ):
+        chunks_processed = 0
         while True:
             audio = q.get()  # (frames, 1)
+            chunks_processed += 1
+
             # Flatten to mono float32 @ 16k for OWW
             mono = audio[:, 0].astype(np.float32, copy=False)
+
+            # AUTOMATIC GAIN CONTROL: Amplify quiet microphones
+            # Target RMS of 0.1, typical microphone input is 0.01-0.001
+            rms_before = np.sqrt(np.mean(mono**2))
+            if rms_before > 0.0001:  # Avoid division by zero on silence
+                gain = 0.1 / rms_before
+                gain = min(gain, 100.0)  # Cap at 100x amplification
+                mono = mono * gain
+            else:
+                gain = 1.0
+
+            rms_after = np.sqrt(np.mean(mono**2))
 
             # OWW accepts ~10–100ms chunks; this is fine with block_size 512 @ 16kHz (~32ms)
             scores = model.predict(mono)  # dict: {model_name: score}
 
+            # Get max score for display
+            max_score = max(scores.values()) if scores else 0
+
+            # Show live score meter with audio levels (updates every 10 chunks = ~320ms)
+            if chunks_processed % 10 == 0:
+                score_str = f"{max_score:.3f}"
+                bars = int(max_score * 20)  # Visual bar (max 20 chars at score=1.0)
+                bar_str = "|" * bars + "." * (20 - bars)
+                audio_level = int(rms_after * 50)  # Audio level bar
+                audio_bar = "#" * min(audio_level, 20)
+                print(f"\r[{bar_str}] {score_str} | Audio:[{audio_bar:<20}] {rms_after:.3f}  ", end="", flush=True)
+
+            # Print when we see interesting scores
+            if max_score > 0.05:
+                print(f"\n[SCORE!] {max_score:.3f} at chunk {chunks_processed}")
+
             # If any model fires above threshold -> wake
             if any(score >= threshold for score in scores.values()):
-                print("🟢 Wake word detected.")
+                try:
+                    print("🟢 Wake word detected.")
+                except UnicodeEncodeError:
+                    print("Wake word detected.")
                 return
 
-            # Periodic heartbeat so the console doesn’t look frozen
+            # Periodic heartbeat so the console doesn't look frozen
             if time.time() - last_ping >= idle_print_secs:
-                print("…still listening")
+                print(f"\n...still listening (say 'hey jarvis', threshold={threshold})...")
                 last_ping = time.time()
 
-# One-time download of all pre-trained models (or only select models)
-def download_wakeword_models():
-    openwakeword.utils.download_models(target_directory="models/openwakeword")

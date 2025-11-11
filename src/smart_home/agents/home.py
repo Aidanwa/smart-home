@@ -16,6 +16,7 @@ class HomeAgent(Agent):
                 WeatherTool(),
                 CallSpotifyAgentTool(),
             ],
-            include_time=True
+            include_time=True,
+            agent_type="home",
         )
 

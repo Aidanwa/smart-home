@@ -2,109 +2,180 @@
 
 Agentic Smart Home Assistant
 
-An experimental local-first smart-home automation system that combines natural language interaction, Zigbee/MQTT device control, and agentic reasoning.  
-It can run fully offline using **Ollama (Llama 3.1 8B)** or use **OpenAI’s Responses API** for cloud-based reasoning and streaming function calls.
+An experimental **agentic smart home automation system** that uses LLMs to orchestrate tool usage for home automation tasks. It supports both **local-first operation (Ollama)** and **cloud-based reasoning (OpenAI)** with optional voice I/O.
 
 ---
 
 ## Project Overview
 
-**Smart Home** is a modular system that integrates local device control with intelligent decision-making.  
-It is designed for privacy, extensibility, and experimentation with agentic automation.  
-Agents can reason about your environment, call tools such as weather or light controllers, and respond through text or voice.
+**Smart Home** is a modular agent framework that combines natural language interaction with intelligent tool orchestration. Agents can reason about your environment, call specialized tools (weather forecasts, Spotify control, and more), and respond through text or voice.
+
+The system is designed for **privacy** (runs fully offline), **extensibility** (easy to add new agents and tools), and **experimentation** with agentic automation patterns.
 
 ---
 
 ## Features
 
-- Agent framework with modular `Agent` and `Tool` classes  
-- Automatic tool-calling loop compatible with OpenAI’s Responses API  
-- MQTT/Zigbee integration for local device control  
-- Example `WeatherTool` for live API queries  
-- Streaming text generation with OpenAI or Ollama  
-- Optional voice I/O using Vosk speech models
+- **Agent Framework**: Core `Agent` class with conversation state management and tool execution
+- **Tool System**: Base `Tool` class with provider-specific schema generation for extensibility
+- **Multiple Agents**: Weather, Spotify, and Home agents with specialized capabilities
+- **Voice Integration**: Speech-to-text (Vosk) and text-to-speech (pyttsx3) for hands-free interaction
+- **Dual Backends**: OpenAI Responses API (cloud) or Ollama (local) with automatic fallback
+- **Streaming Responses**: Real-time token streaming with tool-calling loop support
+- **Advanced Weather**: Time-aware forecasting with granular (hourly/daily) control via weather.gov API
+- **Spotify Integration**: Playback control, device switching, and volume management
 
 ---
 
 ## Setup
 
 ### 1. Clone and enter the project
-```
+```bash
 git clone https://github.com/yourusername/smart-home.git
 cd smart-home
 ```
 
-### 2. Environment setup
-Install dependencies using either `uv` or pip:
+### 2. Install dependencies
 
-```
+This project uses [uv](https://github.com/astral-sh/uv) for dependency management:
+
+```bash
 uv sync
-# or
-pip install -r requirements.txt
 ```
 
-Create a `.env` file at the project root:
-
-```
-# --- choose one backend ---
-
-# For OpenAI:
-OPENAI_API_KEY=
-OPENAI_MODEL=
-
-# Optional (used by WeatherTool)
-COORDS=
+Alternatively, install with pip:
+```bash
+pip install -e .
 ```
 
-If `OPENAI_API_KEY` is set, the agent uses the OpenAI **Responses API**.  
-If not, it automatically falls back to **Ollama** running locally.
+### 3. Configure environment
+
+Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```bash
+# Backend selection
+PROVIDER=ollama              # Options: 'ollama' or 'openai'
+
+# For OpenAI (cloud mode):
+OPENAI_API_KEY=sk-...        # Your OpenAI API key
+OPENAI_MODEL=gpt-4o-mini     # Model to use
+
+# For Ollama (local mode):
+OLLAMA_URL=http://localhost:11434
+
+# Location settings (required for WeatherTool)
+HOME_COORDS=38.8977,-77.0365           # Your latitude,longitude
+HOME_GRID=LWX/87,68                    # From weather.gov API
+TIMEZONE=America/New_York
+
+# Spotify integration (optional)
+SPOTIFY_CLIENT_ID=...
+SPOTIFY_CLIENT_SECRET=...
+SPOTIFY_REFRESH_TOKEN=...              # Get via OAuth flow
+
+# Voice settings (optional)
+SPEECH_TO_TEXT=False         # Enable microphone input
+TEXT_TO_SPEECH=False         # Enable spoken output
+```
+
+**Getting Weather Grid Coordinates:**
+1. Visit `https://api.weather.gov/points/{YOUR_LAT},{YOUR_LON}`
+2. Extract `gridId` and `gridX,gridY` from the response
+3. Format as `HOME_GRID=GRID_ID/GRID_X,GRID_Y`
 
 ---
 
-## Running with Ollama (Offline Mode)
+## Running the Application
 
-Ollama provides fast, private local LLM inference.
+### Standard mode (text-based interaction)
 
-Install and pull the lightweight tool-calling model:
-
+```bash
+uv run python src/smart_home/driver.py
 ```
+
+The application will prompt you to select an agent:
+- **weather**: Weather forecasts and climate queries
+- **spotify**: Music playback control (requires Spotify Premium)
+- **home**: General-purpose assistant combining weather and Spotify
+
+Example interactions:
+```
+Select agent (weather/spotify/home): weather
+You: What's the forecast for tomorrow afternoon?
+Assistant: Tomorrow afternoon will be partly cloudy with temperatures around 72°F...
+
+You: exit
+```
+
+---
+
+## Backend Configuration
+
+### Using Ollama (Local/Offline Mode)
+
+Ollama provides fast, private local LLM inference with no API costs.
+
+**Installation:**
+```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.1:8b
 ```
 
-Ollama runs a background service on:
-```
-http://localhost:11434
-```
+Ollama runs automatically as a background service on `http://localhost:11434`.
 
-Test it with:
-```
+**Verify it's running:**
+```bash
 curl http://localhost:11434/api/tags
 ```
 
----
+Set in `.env`:
+```bash
+PROVIDER=ollama
+OLLAMA_URL=http://localhost:11434
+```
 
-## Running with OpenAI (Cloud Mode)
+### Using OpenAI (Cloud Mode)
 
 For improved reasoning and access to larger models:
 
-1. Get an API key from https://platform.openai.com/  
-2. Add it to your `.env` file  
-3. The agent will automatically stream responses through the **Responses API**, including function calls and real-time output.
+1. Get an API key from [OpenAI Platform](https://platform.openai.com/)
+2. Add to `.env`:
+```bash
+PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
+The agent will stream responses through the **Responses API** with real-time function calling.
 
 ---
 
-## Voice Integration (Vosk)
+## Optional: Voice Integration
 
-Download the English Vosk model:
+### Speech-to-Text (Vosk)
 
-https://alphacephei.com/vosk/models
+Download the English Vosk model from [alphacephei.com/vosk/models](https://alphacephei.com/vosk/models).
 
-Model name:
-`vosk-model-small-en-us-0.15`
+Recommended: `vosk-model-small-en-us-0.15` (40MB)
 
-Place it in a top-level directory:
+**Setup:**
+```bash
+# Create models directory
+mkdir -p models
 
+# Download and extract (example for small English model)
+cd models
+wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+unzip vosk-model-small-en-us-0.15.zip
+cd ..
+```
+
+Directory structure:
 ```
 smart-home/
 ├── models/
@@ -112,40 +183,83 @@ smart-home/
 └── src/
 ```
 
----
-
-## Example Usage
-
-```
-uv run python src/smart_home/driver.py
+Enable in `.env`:
+```bash
+SPEECH_TO_TEXT=True
+TEXT_TO_SPEECH=True
 ```
 
-Example commands inside the app:
-```
-Prompt: turn on the bedroom light
-Prompt: what's the weather like?
-Prompt: exit
-```
+### Text-to-Speech
+
+Uses system TTS engines (pyttsx3):
+- Windows: SAPI5
+- macOS: NSSpeechSynthesizer
+- Linux: espeak
+
+No additional setup required.
 
 ---
 
 ## Technology Stack
 
+**Core:**
 - Python 3.11+
-- Ollama (Llama 3.1 8B)
-- OpenAI Responses API
-- MQTT / Zigbee2MQTT
-- Vosk Speech Recognition
+- [uv](https://github.com/astral-sh/uv) - Fast Python package manager
+- Ollama (Llama 3.1 8B) - Local LLM inference
+- OpenAI Responses API - Cloud-based reasoning
+
+**Integrations:**
+- [weather.gov API](https://weather.gov) - National Weather Service forecasts
+- [Spotify Web API](https://developer.spotify.com/documentation/web-api) - Music playback control
+- [Vosk](https://alphacephei.com/vosk/) - Offline speech recognition
+- [pyttsx3](https://pyttsx3.readthedocs.io/) - Text-to-speech synthesis
+
+**Framework:**
+- Custom agent framework with tool orchestration
+- SSE (Server-Sent Events) streaming for OpenAI
+- JSON streaming for Ollama
 
 ---
 
-Developed as part of an ongoing personal agentic home automation project.
+## Project Structure
 
-## Future Ideas: 
+```
+smart-home/
+├── src/smart_home/
+│   ├── core/
+│   │   ├── agent.py          # Core Agent and Tool classes
+│   │   └── sse.py            # SSE parser for OpenAI streaming
+│   ├── agents/
+│   │   ├── weather.py        # Weather-focused agent
+│   │   ├── spotify.py        # Spotify control agent
+│   │   └── home.py           # General-purpose home agent
+│   ├── tools/
+│   │   ├── weather/          # Weather.gov API integration
+│   │   └── spotify/          # Spotify Web API tools
+│   ├── config/
+│   │   └── paths.py          # Path configuration
+│   └── utils/
+│       └── voice_utils.py    # Speech I/O utilities
+├── models/                   # Voice models directory
+├── data/                     # Logs and cache
+└── docs/
+    └── ROADMAP.md           # Future plans and ideas
+```
 
-- Voice recognition
-- local music library
-- nlp to music requests
-- light integration
-- always listening for keyword loop
-- custom wakeword model
+---
+
+## Contributing
+
+This is a personal experimental project, but feedback and ideas are welcome!
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for planned features and development priorities.
+
+---
+
+## License
+
+MIT License - See LICENSE file for details.
+
+---
+
+Developed as part of an ongoing exploration of agentic automation and local-first AI systems.
