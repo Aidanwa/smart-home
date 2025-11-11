@@ -5,7 +5,7 @@ import os
 class SpotifyPlayTool(Tool):
     def __init__(self):
         name = "spotify_play"
-        description = "Start/resume playback. Provide a URI/context_uri or a simple search query."
+        description = "Start/resume playback. Provide a URI/context_uri or a simple search query. You must provide a device"
         params = {
             "type": "object",
             "properties": {

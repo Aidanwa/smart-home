@@ -20,10 +20,10 @@ You can control Spotify using the provided tools:
 
 Guidelines:
 - If user says “play <something>”, call spotify_play with query=<something>.
-- If they mention a device (e.g., “on living room”), pass device="living room".
 - For “pause/stop”, call spotify_pause.
 - For “volume X%”, call spotify_set_volume with percent=X.
 - Prefer minimal wording in responses; confirm success or report errors.
+- If only one device is available, use it automatically. Otherwise, ask user to specify.
 """
 
 def _fetch_spotify_devices_for_prompt(timeout: float = 6.0) -> list[dict]:

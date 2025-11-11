@@ -23,7 +23,6 @@ class CallSpotifyAgentTool(Tool):
 
             def response_stream():
                 for chunk in spotify_agent.stream(query):
-                    print(chunk, end="", flush=True)
                     yield chunk
                     
             response = "".join(response_stream())
