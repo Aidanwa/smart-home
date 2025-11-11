@@ -1,6 +1,9 @@
 import os
 import time
+import logging
 import requests
+
+logger = logging.getLogger(__name__)
 
 # ---------- Minimal shared Spotify client ----------
 
@@ -58,7 +61,7 @@ class _SpotifyClient:
             return device_or_id
         # Else try name contains match
         for d in self.list_devices():
-            print(d)
+            logger.debug(f"Spotify device found: {d.get('name', 'Unknown')}", extra={"device": d})
             if device_or_id.lower() in (d.get("name") or "").lower():
                 return d.get("id")
         return None

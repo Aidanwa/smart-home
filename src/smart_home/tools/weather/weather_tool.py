@@ -1,12 +1,15 @@
 import os
 import time
 import requests
+import logging
 from typing import Any, Dict
 from datetime import datetime, timezone, timedelta
 from smart_home.core.agent import Tool
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class WeatherTool(Tool):
 
@@ -73,7 +76,6 @@ class WeatherTool(Tool):
 
             if granularity == "hourly":
                 hourly = self._get_json(hourly_url)
-                # print(json.dumps(hourly, indent=2))
                 summary_str = summarize_nws_hourly(
                     hourly["periods"],
                     forecast_times_iso,
@@ -81,18 +83,25 @@ class WeatherTool(Tool):
                 )
             else:  # "daily" (default)
                 daily = self._get_json(forecast_url)
-                # print(json.dumps(daily, indent=2))
                 summary_str = summarize_nws_daily(
                     daily["periods"],
                     forecast_times_iso,
                     units="F",
                 )
 
+            logger.info(
+                f"Weather forecast retrieved for {location}",
+                extra={"tool_name": "get_weather", "location": location, "granularity": granularity}
+            )
             return summary_str
 
         except Exception as e:
-            print(f"WeatherTool error: {e}")
-            return  f"Error: {e}"
+            logger.error(
+                f"WeatherTool error: {e}",
+                exc_info=True,
+                extra={"tool_name": "get_weather", "location": location}
+            )
+            return f"Error: {e}"
 
 
     # ----- resolution / http -----
@@ -119,7 +128,10 @@ class WeatherTool(Tool):
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
-                print(f"WeatherTool error: {e}")
+                logger.debug(
+                    f"Weather API request retry {i+1}/3",
+                    extra={"tool_name": "get_weather", "url": url, "error": str(e)}
+                )
                 last = e
                 time.sleep(0.25 * (i + 1))
         raise last

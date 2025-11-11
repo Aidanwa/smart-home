@@ -2,12 +2,15 @@ import os
 import json
 import requests
 import uuid
+import logging
 from datetime import datetime
 from typing import Iterable, Optional, List, Dict, Any
 from dotenv import load_dotenv
 from smart_home.config.paths import AGENT_LOGS_DIR
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 PROVIDER = os.getenv("PROVIDER").strip().lower()
 OPENAI_API_BASE = "https://api.openai.com/v1"
@@ -79,7 +82,10 @@ class Agent:
         if self.provider == "openai":
             self.openai_key = OPENAI_API_KEY
 
-        print(f"Created agent with provider: {self.provider} | model: {self.model} | id: {self.agent_id}\n")
+        logger.info(
+            f"Created agent with provider: {self.provider} | model: {self.model}",
+            extra={"agent_id": self.agent_id, "provider": self.provider, "model": self.model}
+        )
 
     # ---------- Public API ----------
 
@@ -119,7 +125,7 @@ class Agent:
                 json.dump(log_data, f, ensure_ascii=False, indent=2)
 
         except Exception as e:
-            print(f"[Warning] Failed to save messages: {e}")
+            logger.error(f"Failed to save messages: {e}", exc_info=True, extra={"agent_id": self.agent_id})
 
     # ---------- Ollama path ----------
 
@@ -127,7 +133,7 @@ class Agent:
         loop_count = 0
         while True:
             if loop_count >= max_tool_loops:
-                print("\n[Max tool loop limit reached — stopping.]\n")
+                logger.warning("Max tool loop limit reached", extra={"agent_id": self.agent_id, "max_loops": max_tool_loops})
                 break
 
             url = "http://localhost:11434/api/chat"
@@ -143,7 +149,10 @@ class Agent:
 
             with requests.post(url, json=data, stream=True) as response:
                 if response.status_code != 200:
-                    print(f"\nError: {response.text}\n")
+                    logger.error(
+                        f"Ollama API error: {response.text}",
+                        extra={"agent_id": self.agent_id, "status_code": response.status_code}
+                    )
                     return
 
                 for line in response.iter_lines():
@@ -157,7 +166,10 @@ class Agent:
                     if tool_calls:
                         tool_used = True
                         loop_count += 1
-                        print(f"\n[Tool call requested: {tool_calls}]\n")
+                        logger.debug(
+                            f"Tool call requested",
+                            extra={"agent_id": self.agent_id, "tool_calls": tool_calls}
+                        )
 
                         for tool_call in tool_calls:
                             fn = tool_call["function"]["name"]
@@ -176,7 +188,10 @@ class Agent:
                                         "role": "tool",
                                         "content": result
                                     })
-                                    print(f"[Tool {fn} executed → {result}]\n")
+                                    logger.info(
+                                        f"Tool {fn} executed",
+                                        extra={"agent_id": self.agent_id, "tool_name": fn, "result": result[:100]}
+                                    )
                         break  # break streaming to start next loop turn
 
                     # Handle natural content
@@ -198,7 +213,7 @@ class Agent:
 
         while True:
             if loop_count >= max_tool_loops:
-                print("\n[Max tool loop limit reached — stopping.]\n")
+                logger.warning("Max tool loop limit reached", extra={"agent_id": self.agent_id, "max_loops": max_tool_loops})
                 break
 
             assistant_text_parts: List[str] = []
@@ -326,7 +341,10 @@ class Agent:
                     fn_name = (rec.get("name") or "").strip()
                     call_id = rec.get("call_id")
                     if not fn_name or not call_id:
-                        print(f"[WARN] Missing name/call_id for tool item {item_id}, skipping.")
+                        logger.warning(
+                            f"Missing name/call_id for tool item, skipping",
+                            extra={"agent_id": self.agent_id, "item_id": item_id}
+                        )
                         continue
 
                     # Parse args JSON
@@ -410,7 +428,7 @@ class Agent:
             if raw is None:
                 continue
             if debug:
-                print(raw)
+                logger.debug(f"SSE raw line: {raw}")
 
             line = raw.lstrip("\ufeff")
             if not line:

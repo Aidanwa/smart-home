@@ -81,6 +81,9 @@ SPOTIFY_REFRESH_TOKEN=...              # Get via OAuth flow
 # Voice settings (optional)
 SPEECH_TO_TEXT=False         # Enable microphone input
 TEXT_TO_SPEECH=False         # Enable spoken output
+
+# Logging (optional)
+LOG_LEVEL=INFO               # Options: DEBUG, INFO, WARNING, ERROR
 ```
 
 **Getting Weather Grid Coordinates:**

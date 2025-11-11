@@ -4,10 +4,16 @@ from smart_home.agents.spotify import SpotifyAgent
 from smart_home.agents.home import HomeAgent
 from smart_home.core.agent import Agent
 import os
+import logging
 from dotenv import load_dotenv
+from smart_home.config import logging as logging_config
 # from smart_home.config.paths import MODELS_DIR  # Unused while wake word is disabled
 
 load_dotenv()
+
+# Initialize logging system
+logging_config.configure()
+logger = logging.getLogger(__name__)
 
 NAME_TO_AGENT = {
     "weather": WeatherAgent,
@@ -77,8 +83,10 @@ def main():
     if agent_name:
         agent = select_agent_by_name(agent_name)
         if agent is None:
+            logger.error(f"No agent found with the name '{agent_name}'")
             print(f"No agent found with the name '{agent_name}'. Exiting.")
             return
+        logger.info(f"Selected agent: {agent_name}")
         print(f"Using '{agent_name}' agent for conversation.")
         converse_with_agent(Agent=agent)
     else:

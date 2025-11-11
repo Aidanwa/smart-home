@@ -6,6 +6,7 @@ import sys
 import time
 import queue
 import os, platform, glob
+import logging
 
 import pyttsx3
 import simpleaudio as sa
@@ -17,6 +18,8 @@ from openwakeword.model import Model as WakeWordModel
 from openwakeword.utils import download_models as oww_download_models
 import numpy as np
 from smart_home.config.paths import MODELS_DIR
+
+logger = logging.getLogger(__name__)
 
 # Load the Vosk model globally so it's only initialized once
 model = Model("models/vosk-model-small-en-us-0.15")
@@ -30,7 +33,7 @@ else:
         try:
             sa.WaveObject.from_wave_file(path).play()
         except Exception as e:
-            print(f"⚠️ Could not play sound {path}: {e}")
+            logger.error(f"Could not play sound {path}: {e}", exc_info=True)
 
 
 def speech_to_text(play_sounds: bool = False):
@@ -186,7 +189,7 @@ def _download_oww_models_if_needed(framework: str, target_dir: str) -> list[str]
         # One-time download of all pre-trained models into your repo
         oww_download_models(target_directory=target_dir)
     except Exception as e:
-        print(f"[wake] Model download failed: {e}")
+        logger.error(f"Wake model download failed: {e}", exc_info=True)
         return []
     return _discover_downloaded_models(target_dir, framework)
 
@@ -215,8 +218,10 @@ def _load_wake_model(model_paths: list[str] | None):
     if os.path.exists(embedding_path):
         kwargs["embedding_model_path"] = embedding_path
 
-    print(f"[wake] Loading wake model with framework={framework}, "
-          f"custom_models={ [os.path.basename(p) for p in chosen] if chosen else 'built-ins' }")
+    logger.debug(
+        f"Loading wake model with framework={framework}",
+        extra={"framework": framework, "custom_models": [os.path.basename(p) for p in chosen] if chosen else None}
+    )
 
     try:
         return WakeWordModel(**kwargs)
@@ -230,12 +235,15 @@ def _load_wake_model(model_paths: list[str] | None):
 
         # If we tried to use built-ins (no custom models) and they aren't on disk, download and retry.
         if framework == "onnx" and missing_builtin:
-            print("[wake] Required ONNX models not found locally. Downloading once…")
+            logger.info("Required ONNX models not found locally. Downloading once…")
             # Keep models alongside your project (not inside site-packages)
             downloaded = _download_oww_models_if_needed(framework, target_dir)
 
             if downloaded:
-                print(f"[wake] Using downloaded models: {[os.path.basename(p) for p in downloaded]}")
+                logger.info(
+                    f"Using downloaded wake models",
+                    extra={"model_count": len(downloaded), "models": [os.path.basename(p) for p in downloaded]}
+                )
                 # Retry with proper paths after download
                 if os.path.exists(melspec_path):
                     kwargs["melspec_model_path"] = melspec_path
@@ -272,7 +280,7 @@ def wait_for_wake_word(
     q: queue.Queue[np.ndarray] = queue.Queue()
     def audio_cb(indata, frames, time_info, status):
         if status:
-            print(f"\n[AUDIO ERROR] {status}")
+            logger.error(f"Audio stream error: {status}")
         q.put(indata.copy())
 
     last_ping = time.time()
@@ -280,12 +288,12 @@ def wait_for_wake_word(
     if play_sounds:
         play_wav_async("assets/start.wav")
 
-    # Print audio device info
+    # Log audio device info
     try:
         device = sd.query_devices(kind='input')
-        print(f"Microphone: {device['name']}")
+        logger.debug(f"Using microphone: {device['name']}")
     except:
-        print("Microphone: default")
+        logger.debug("Using default microphone")
 
     try:
         print("🟡 Listening for wake word…")
@@ -335,9 +343,9 @@ def wait_for_wake_word(
                 audio_bar = "#" * min(audio_level, 20)
                 print(f"\r[{bar_str}] {score_str} | Audio:[{audio_bar:<20}] {rms_after:.3f}  ", end="", flush=True)
 
-            # Print when we see interesting scores
+            # Log when we see interesting scores
             if max_score > 0.05:
-                print(f"\n[SCORE!] {max_score:.3f} at chunk {chunks_processed}")
+                logger.debug(f"Wake word score spike: {max_score:.3f} at chunk {chunks_processed}")
 
             # If any model fires above threshold -> wake
             if any(score >= threshold for score in scores.values()):
@@ -349,6 +357,6 @@ def wait_for_wake_word(
 
             # Periodic heartbeat so the console doesn't look frozen
             if time.time() - last_ping >= idle_print_secs:
-                print(f"\n...still listening (say 'hey jarvis', threshold={threshold})...")
+                logger.debug(f"Still listening for wake word (threshold={threshold})")
                 last_ping = time.time()
 

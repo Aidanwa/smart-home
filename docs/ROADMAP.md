@@ -33,7 +33,6 @@ This document outlines the planned features, improvements, and ongoing developme
   - Catch and format exceptions from tool execution
   - Return error context to LLM for recovery
   - Add retry logic with backoff for API failures
-  - Log errors to structured log files
 
 - **Configuration Validation**: Add startup validation for:
   - Required environment variables based on selected provider
@@ -47,12 +46,6 @@ This document outlines the planned features, improvements, and ongoing developme
   - Auto-detect available models via Ollama API
 
 ### Low Priority
-
-- **Logging System**: Implement structured logging with:
-  - Configurable log levels (DEBUG, INFO, WARNING, ERROR)
-  - JSON-formatted logs for parsing
-  - Separate log files per agent
-  - Rotation and cleanup policies
 
 - **Conversation History Management**: Currently saves to `debug_messages.json`. Should:
   - Implement proper session management
