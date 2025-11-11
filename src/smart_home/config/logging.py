@@ -30,6 +30,42 @@ class JsonFormatter(logging.Formatter):
 
         return json.dumps(payload)
 
+class ConsoleFormatter(logging.Formatter):
+    """Concise formatter for console output."""
+
+    COLORS = {
+        'DEBUG': '\033[36m',    # Cyan
+        'INFO': '\033[32m',     # Green
+        'WARNING': '\033[33m',  # Yellow
+        'ERROR': '\033[31m',    # Red
+        'CRITICAL': '\033[35m', # Magenta
+        'RESET': '\033[0m'
+    }
+
+    def format(self, record):
+        # Color the level name
+        level_color = self.COLORS.get(record.levelname, '')
+        reset = self.COLORS['RESET']
+        level = f"{level_color}{record.levelname[0]}{reset}"  # Just first letter
+
+        # Build context string from extra fields
+        context_parts = []
+        if hasattr(record, 'tool_name'):
+            context_parts.append(f"tool={record.tool_name}")
+        if hasattr(record, 'provider'):
+            context_parts.append(f"{record.provider}")
+
+        context = f" [{' '.join(context_parts)}]" if context_parts else ""
+
+        # Format: [L] message [context]
+        msg = f"[{level}] {record.getMessage()}{context}"
+
+        # Add exception on new line if present
+        if record.exc_info:
+            msg += f"\n  {self.formatException(record.exc_info)}"
+
+        return msg
+
 def configure(level=None, log_file=None):
     """
     Configure logging with JSON formatting and optional file output.
@@ -51,18 +87,20 @@ def configure(level=None, log_file=None):
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / "app.log"
 
-    # JSON formatter for structured logging
-    json_formatter = JsonFormatter()
+    # Concise console formatter for human readability
+    console_formatter = ConsoleFormatter()
 
-    # Console handler - outputs JSON for structured logs
+    # Console handler - concise, colored output
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(json_formatter)
+    console_handler.setFormatter(console_formatter)
     console_handler.setLevel(level)
 
     handlers = [console_handler]
 
     # File handler with rotation (10MB max, 5 backups = ~60MB total)
+    # Uses JSON formatter for structured logs
     if log_file:
+        json_formatter = JsonFormatter()
         file_handler = RotatingFileHandler(
             log_file,
             maxBytes=10 * 1024 * 1024,  # 10MB

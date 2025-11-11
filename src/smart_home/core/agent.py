@@ -147,58 +147,72 @@ class Agent:
             assistant_reply = ""
             tool_used = False
 
-            with requests.post(url, json=data, stream=True) as response:
-                if response.status_code != 200:
-                    logger.error(
-                        f"Ollama API error: {response.text}",
-                        extra={"agent_id": self.agent_id, "status_code": response.status_code}
-                    )
-                    return
-
-                for line in response.iter_lines():
-                    if not line:
-                        continue
-                    chunk = json.loads(line.decode("utf-8"))
-                    msg = chunk.get("message", {})
-
-                    # Handle tool calls
-                    tool_calls = msg.get("tool_calls", [])
-                    if tool_calls:
-                        tool_used = True
-                        loop_count += 1
-                        logger.debug(
-                            f"Tool call requested",
-                            extra={"agent_id": self.agent_id, "tool_calls": tool_calls}
+            try:
+                with requests.post(url, json=data, stream=True, timeout=30) as response:
+                    if response.status_code != 200:
+                        logger.error(
+                            f"Ollama API error: {response.text}",
+                            extra={"agent_id": self.agent_id, "status_code": response.status_code}
                         )
+                        return
 
-                        for tool_call in tool_calls:
-                            fn = tool_call["function"]["name"]
-                            args = tool_call["function"].get("arguments", {}) or {}
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        chunk = json.loads(line.decode("utf-8"))
+                        msg = chunk.get("message", {})
 
-                            for tool in self.tools:
-                                if tool.name == fn:
-                                    result = tool.call(**args)
-                                    # Save assistant request + tool result
-                                    self.messages.append({
-                                        "role": "assistant",
-                                        "content": "",
-                                        "tool_calls": [tool_call]
-                                    })
-                                    self.messages.append({
-                                        "role": "tool",
-                                        "content": result
-                                    })
-                                    logger.info(
-                                        f"Tool {fn} executed",
-                                        extra={"agent_id": self.agent_id, "tool_name": fn, "result": result[:100]}
-                                    )
-                        break  # break streaming to start next loop turn
+                        # Handle tool calls
+                        tool_calls = msg.get("tool_calls", [])
+                        if tool_calls:
+                            tool_used = True
+                            loop_count += 1
+                            logger.debug(
+                                f"Tool call requested",
+                                extra={"agent_id": self.agent_id, "tool_calls": tool_calls}
+                            )
 
-                    # Handle natural content
-                    content = msg.get("content", "")
-                    if content:
-                        assistant_reply += content
-                        yield content
+                            for tool_call in tool_calls:
+                                fn = tool_call["function"]["name"]
+                                args = tool_call["function"].get("arguments", {}) or {}
+
+                                for tool in self.tools:
+                                    if tool.name == fn:
+                                        try:
+                                            result = tool.call(**args)
+                                        except Exception as ex:
+                                            result = f"Tool execution error: {ex}"
+                                            logger.error(
+                                                f"Tool {fn} failed: {ex}",
+                                                exc_info=True,
+                                                extra={"agent_id": self.agent_id, "tool_name": fn}
+                                            )
+                                        # Save assistant request + tool result
+                                        self.messages.append({
+                                            "role": "assistant",
+                                            "content": "",
+                                            "tool_calls": [tool_call]
+                                        })
+                                        self.messages.append({
+                                            "role": "tool",
+                                            "content": result
+                                        })
+                                        logger.info(
+                                            f"Tool {fn} executed",
+                                            extra={"agent_id": self.agent_id, "tool_name": fn, "result": result[:100]}
+                                        )
+                            break  # break streaming to start next loop turn
+
+                        # Handle natural content
+                        content = msg.get("content", "")
+                        if content:
+                            assistant_reply += content
+                            yield content
+
+            except requests.RequestException as ex:
+                logger.error(f"Ollama API request failed: {ex}", exc_info=True, extra={"agent_id": self.agent_id})
+                yield f"\n[Error: Could not connect to Ollama: {ex}]"
+                return
 
             if not tool_used:
                 if assistant_reply:
@@ -233,149 +247,165 @@ class Agent:
 
             url = f"{OPENAI_API_BASE}/responses"
 
-            with requests.post(url, headers=self._openai_headers(), data=self._json(body), stream=True) as resp:
-                if resp.status_code != 200:
-                    try:
-                        err = resp.json()
-                    except Exception:
-                        err = {"error": resp.text}
-                    raise RuntimeError(f"OpenAI Responses API error: {err}")
+            try:
+                with requests.post(url, headers=self._openai_headers(), data=self._json(body), stream=True, timeout=30) as resp:
+                    if resp.status_code != 200:
+                        try:
+                            err = resp.json()
+                        except Exception:
+                            err = {"error": resp.text}
+                        logger.error(f"OpenAI API error: {err}", extra={"agent_id": self.agent_id})
+                        raise RuntimeError(f"OpenAI Responses API error: {err}")
 
-                # ---- SSE event loop ----
-                for etype, data in self._sse_events(resp, debug=False):
-                    # 1) Streamed assistant text tokens
-                    if etype == "response.output_text.delta":
-                        delta = data.get("delta") or ""
-                        if delta:
-                            assistant_text_parts.append(delta)
-                            yield delta
-                        continue
+                    # ---- SSE event loop ----
+                    for etype, data in self._sse_events(resp, debug=False):
+                        # 1) Streamed assistant text tokens
+                        if etype == "response.output_text.delta":
+                            delta = data.get("delta") or ""
+                            if delta:
+                                assistant_text_parts.append(delta)
+                                yield delta
+                            continue
 
-                    # 2) New function_call item — capture name & call_id
-                    if etype == "response.output_item.added":
-                        item = data.get("item") or {}
-                        if item.get("type") == "function_call":
-                            item_id = item.get("id")
-                            if item_id:
+                        # 2) New function_call item — capture name & call_id
+                        if etype == "response.output_item.added":
+                            item = data.get("item") or {}
+                            if item.get("type") == "function_call":
+                                item_id = item.get("id")
+                                if item_id:
+                                    rec = pending_calls.setdefault(
+                                        item_id, {"name": "", "call_id": None, "args": [], "ready": False}
+                                    )
+                                    if item.get("name"):
+                                        rec["name"] = item["name"]
+                                    if item.get("call_id"):
+                                        rec["call_id"] = item["call_id"]
+                            continue
+
+                        # 3) JSON args fragments (accumulate)
+                        if etype == "response.function_call_arguments.delta":
+                            item_id = data.get("item_id")
+                            frag = data.get("delta") or ""
+                            if item_id and frag:
                                 rec = pending_calls.setdefault(
                                     item_id, {"name": "", "call_id": None, "args": [], "ready": False}
                                 )
-                                if item.get("name"):
-                                    rec["name"] = item["name"]
-                                if item.get("call_id"):
-                                    rec["call_id"] = item["call_id"]
-                        continue
+                                rec["args"].append(frag)
+                            continue
 
-                    # 3) JSON args fragments (accumulate)
-                    if etype == "response.function_call_arguments.delta":
-                        item_id = data.get("item_id")
-                        frag = data.get("delta") or ""
-                        if item_id and frag:
-                            rec = pending_calls.setdefault(
-                                item_id, {"name": "", "call_id": None, "args": [], "ready": False}
-                            )
-                            rec["args"].append(frag)
-                        continue
-
-                    # 4) Args finished — mark ready and prepare a function_call item we can persist
-                    if etype == "response.function_call_arguments.done":
-                        item_id = data.get("item_id")
-                        if item_id and item_id in pending_calls:
-                            rec = pending_calls[item_id]
-                            args_json = "".join(rec["args"]) if rec["args"] else "{}"
-                            rec["args_json"] = args_json
-                            rec["ready"] = True
-                        continue
-
-                    # 5) Item completed — second ready signal; build final function_call item
-                    if etype == "response.output_item.done":
-                        item = data.get("item") or {}
-                        if item.get("type") == "function_call":
-                            item_id = item.get("id")
+                        # 4) Args finished — mark ready and prepare a function_call item we can persist
+                        if etype == "response.function_call_arguments.done":
+                            item_id = data.get("item_id")
                             if item_id and item_id in pending_calls:
                                 rec = pending_calls[item_id]
-                                # ensure args_json
-                                if not rec.get("args_json"):
-                                    rec["args_json"] = "".join(rec["args"]) if rec["args"] else "{}"
+                                args_json = "".join(rec["args"]) if rec["args"] else "{}"
+                                rec["args_json"] = args_json
                                 rec["ready"] = True
-                                # create a function_call item that mirrors what Responses would return in .output
-                                fn_name = rec.get("name") or item.get("name") or ""
-                                call_id = rec.get("call_id") or item.get("call_id")
-                                arguments = rec.get("args_json", "{}")
-                                emitted_function_calls.append({
-                                    "id": item_id,
-                                    "type": "function_call",
-                                    "status": "completed",
-                                    "name": fn_name,
-                                    "call_id": call_id,
-                                    "arguments": arguments,
-                                })
-                        continue
+                            continue
 
-                    # 6) Model-side error
-                    if etype == "response.error":
-                        err = data.get("error", "Unknown OpenAI streaming error")
-                        raise RuntimeError(str(err))
+                        # 5) Item completed — second ready signal; build final function_call item
+                        if etype == "response.output_item.done":
+                            item = data.get("item") or {}
+                            if item.get("type") == "function_call":
+                                item_id = item.get("id")
+                                if item_id and item_id in pending_calls:
+                                    rec = pending_calls[item_id]
+                                    # ensure args_json
+                                    if not rec.get("args_json"):
+                                        rec["args_json"] = "".join(rec["args"]) if rec["args"] else "{}"
+                                    rec["ready"] = True
+                                    # create a function_call item that mirrors what Responses would return in .output
+                                    fn_name = rec.get("name") or item.get("name") or ""
+                                    call_id = rec.get("call_id") or item.get("call_id")
+                                    arguments = rec.get("args_json", "{}")
+                                    emitted_function_calls.append({
+                                        "id": item_id,
+                                        "type": "function_call",
+                                        "status": "completed",
+                                        "name": fn_name,
+                                        "call_id": call_id,
+                                        "arguments": arguments,
+                                    })
+                            continue
 
-            # ---- After streaming: persist streamed assistant text (if any)
-            if assistant_text_parts:
-                self.messages.append({
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": "".join(assistant_text_parts)}],
-                })
-                assistant_text_parts = []
+                        # 6) Model-side error
+                        if etype == "response.error":
+                            err = data.get("error", "Unknown OpenAI streaming error")
+                            raise RuntimeError(str(err))
 
-            # ---- Persist the function_call items into history (docs-style)
-            # (Now the tool calls live in input; no need for previous_response_id.)
-            if emitted_function_calls:
-                self.messages += emitted_function_calls  # append list of dict items directly
-
-            # ---- Execute tools and persist function_call_output items
-            if any(rec.get("ready") for rec in pending_calls.values()):
-                loop_count += 1
-
-                for item_id, rec in pending_calls.items():
-                    if not rec.get("ready"):
-                        continue
-
-                    fn_name = (rec.get("name") or "").strip()
-                    call_id = rec.get("call_id")
-                    if not fn_name or not call_id:
-                        logger.warning(
-                            f"Missing name/call_id for tool item, skipping",
-                            extra={"agent_id": self.agent_id, "item_id": item_id}
-                        )
-                        continue
-
-                    # Parse args JSON
-                    args_obj = self._parse_json_object(rec.get("args_json", "")) or {}
-
-                    # Execute your local tool
-                    tool_found = False
-                    result_payload = ""
-                    for tool in self.tools:
-                        if tool.name == fn_name:
-                            tool_found = True
-                            try:
-                                result = tool.call(**args_obj)
-                            except Exception as ex:
-                                result = f"Tool execution error: {ex}"
-                            # function_call_output.output expects a string
-                            result_payload = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
-                            break
-                    if not tool_found:
-                        result_payload = f"[Tool '{fn_name}' not found]"
-
-                    # Persist function_call_output item into history (docs example style)
+                # ---- After streaming: persist streamed assistant text (if any)
+                if assistant_text_parts:
                     self.messages.append({
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": result_payload,
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "".join(assistant_text_parts)}],
                     })
+                    assistant_text_parts = []
 
-                # Kick off a fresh assistant turn with expanded history (includes function_call + outputs)
-                # By design we do NOT set previous_response_id here, because history contains the calls.
-                continue
+                # ---- Persist the function_call items into history (docs-style)
+                # (Now the tool calls live in input; no need for previous_response_id.)
+                if emitted_function_calls:
+                    self.messages += emitted_function_calls  # append list of dict items directly
+
+                # ---- Execute tools and persist function_call_output items
+                if any(rec.get("ready") for rec in pending_calls.values()):
+                    loop_count += 1
+
+                    for item_id, rec in pending_calls.items():
+                        if not rec.get("ready"):
+                            continue
+
+                        fn_name = (rec.get("name") or "").strip()
+                        call_id = rec.get("call_id")
+                        if not fn_name or not call_id:
+                            logger.warning(
+                                f"Missing name/call_id for tool item, skipping",
+                                extra={"agent_id": self.agent_id, "item_id": item_id}
+                            )
+                            continue
+
+                        # Parse args JSON
+                        args_obj = self._parse_json_object(rec.get("args_json", "")) or {}
+
+                        # Execute your local tool
+                        tool_found = False
+                        result_payload = ""
+                        for tool in self.tools:
+                            if tool.name == fn_name:
+                                tool_found = True
+                                try:
+                                    result = tool.call(**args_obj)
+                                except Exception as ex:
+                                    result = f"Tool execution error: {ex}"
+                                    logger.error(
+                                        f"Tool {fn_name} failed: {ex}",
+                                        exc_info=True,
+                                        extra={"agent_id": self.agent_id, "tool_name": fn_name}
+                                    )
+                                # function_call_output.output expects a string
+                                result_payload = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+                                break
+                        if not tool_found:
+                            result_payload = f"[Tool '{fn_name}' not found]"
+
+                        # Persist function_call_output item into history (docs example style)
+                        self.messages.append({
+                            "type": "function_call_output",
+                            "call_id": call_id,
+                            "output": result_payload,
+                        })
+
+                    # Kick off a fresh assistant turn with expanded history (includes function_call + outputs)
+                    # By design we do NOT set previous_response_id here, because history contains the calls.
+                    continue
+
+            except requests.RequestException as ex:
+                logger.error(f"OpenAI API request failed: {ex}", exc_info=True, extra={"agent_id": self.agent_id})
+                yield f"\n[Error: Could not connect to OpenAI API: {ex}]"
+                return
+            except RuntimeError as ex:
+                logger.error(f"OpenAI API error: {ex}", exc_info=True, extra={"agent_id": self.agent_id})
+                yield f"\n[Error: {ex}]"
+                return
 
             # ---- No tool calls this turn: finish
             break

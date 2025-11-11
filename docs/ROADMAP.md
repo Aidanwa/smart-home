@@ -22,11 +22,6 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ### Medium Priority
 
-- **Error Handling Improvements**: Tool errors are not gracefully handled in the agent loop. Should:
-  - Catch and format exceptions from tool execution
-  - Return error context to LLM for recovery
-  - Add retry logic with backoff for API failures
-
 - **Configuration Validation**: Add startup validation for:
   - Required environment variables based on selected provider
   - Model file existence (Vosk, OpenWakeWord)
