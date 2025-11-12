@@ -6,13 +6,31 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ## Current Issues & Active Work
 
-### High Priority
+### High Priority - Capability Expansion
 
-- **Fix Spotify Tool Implementation**: The Spotify integration is currently broken (as of commit 300fe40). Need to debug and restore functionality for:
-  - Play/Pause commands
-  - Device switching
-  - Volume control
-  - Search and URI playback
+- **Web Search Agent**: Enable the system to retrieve information from the internet to answer any question
+  - Implement web search tool (DuckDuckGo, SearXNG, or similar API)
+  - Add content extraction and summarization capabilities
+  - Handle multi-step research queries
+  - Cache search results for performance
+
+- **Light Agent**: Complete Zigbee MQTT integration for smart lighting control
+  - Finish Zigbee MQTT MCP implementation on server
+  - Create Light Agent with tools for on/off, brightness, color control
+  - Implement scene management
+  - Add state query capabilities
+  - Test with actual Zigbee devices via MQTT broker
+
+### Medium Priority - User Interface
+
+- **Frontend Development**: Build web-based interface for the smart home system
+  - Design and implement web dashboard
+  - Real-time conversation view
+  - Device status monitoring
+  - Agent configuration interface
+  - Consider tech stack: FastAPI backend + React/Vue frontend
+
+### Low Priority
 
 - **Fix Wake-Word Detection**: OpenWakeWord integration is not functioning correctly. Issues to investigate:
   - Model loading and initialization
@@ -20,16 +38,17 @@ This document outlines the planned features, improvements, and ongoing developme
   - Threshold tuning
   - Integration with main conversation loop
 
-### Medium Priority
+- **Fix Spotify Tool Implementation**: The Spotify integration is currently broken (as of commit 300fe40). Need to debug and restore functionality for:
+  - Play/Pause commands
+  - Device switching
+  - Volume control
+  - Search and URI playback
 
 - **Configuration Validation**: Add startup validation for:
   - Required environment variables based on selected provider
   - Model file existence (Vosk, OpenWakeWord)
   - API credential verification
   - Network connectivity checks
-
-
-### Low Priority
 
 - **Implement Testing Infrastructure**: The `tests/` directory exists but is currently empty. Need to add:
   - Unit tests for core Agent and Tool classes
@@ -42,8 +61,31 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ## Future Agents
 
-### Smart Lighting Agent
-**Description**: Control smart lights (Zigbee, Z-Wave, Hue, etc.) with natural language.
+### Web Search Agent *(In Active Development)*
+**Description**: Retrieve information from the internet to answer questions beyond the LLM's knowledge base.
+
+**Tools:**
+- `WebSearchTool`: Search the internet using DuckDuckGo, SearXNG, or similar
+- `ExtractContentTool`: Extract and parse content from web pages
+- `SummarizeTool`: Condense long articles or search results
+- `FactCheckTool`: Cross-reference information across multiple sources
+
+**Integration:**
+- DuckDuckGo API (no authentication required)
+- SearXNG self-hosted instance (privacy-focused)
+- BeautifulSoup/Playwright for content extraction
+- Result caching to reduce API calls
+
+**Example queries:**
+- "What's the latest news about AI developments?"
+- "Look up the recipe for chocolate chip cookies"
+- "Find information about the history of the Roman Empire"
+- "What are the current gas prices in my area?"
+
+---
+
+### Smart Lighting Agent *(In Active Development)*
+**Description**: Control smart lights (Zigbee via MQTT) with natural language.
 
 **Tools:**
 - `SetLightStateTool`: Turn lights on/off, set brightness, change color
@@ -53,12 +95,15 @@ This document outlines the planned features, improvements, and ongoing developme
 
 **Integration:**
 - MQTT/Zigbee2MQTT for local control
+- MCP (Model Context Protocol) server for Zigbee MQTT bridge
 
 **Example queries:**
 - "Turn on the bedroom lights"
 - "Set living room to 50% brightness"
 - "Make the kitchen lights warm white"
 - "Turn off all lights in 30 minutes"
+
+**Status**: Requires completion of Zigbee MQTT MCP implementation on server
 
 ---
 
@@ -81,29 +126,6 @@ This document outlines the planned features, improvements, and ongoing developme
 - "Add a dentist appointment for Tuesday at 2pm"
 - "Remind me to water the plants every Sunday"
 - "Am I free Friday afternoon?"
-
----
-
-### News & Information Agent
-**Description**: Fetch news, weather alerts, and curated information feeds.
-
-**Tools:**
-- `GetNewsTool`: Fetch headlines from RSS feeds or news APIs
-- `SearchNewsTool`: Search news by keyword or topic
-- `GetAlertsToolWeatherAlerts`: Severe weather warnings
-- `SummarizeArticleTool`: Extract key points from articles
-
-**Integration:**
-- RSS/Atom feed parsing
-- NewsAPI or similar aggregator
-- NWS alert system (weather.gov)
-- Web scraping for article content
-
-**Example queries:**
-- "What's in the news today?"
-- "Any weather alerts for my area?"
-- "Find articles about renewable energy"
-- "Summarize the top story"
 
 ---
 
@@ -182,14 +204,6 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ## Future Tools
 
-### Weather Tools (Enhancements)
-- **`WeatherAlertTool`**: Push notifications for severe weather
-- **`HistoricalWeatherTool`**: Query past weather data for analysis
-- **`WeatherMapTool`**: Generate radar/satellite imagery links
-- **`PollutionIndexTool`**: Air quality and pollen counts
-
----
-
 ### Spotify Tools (Enhancements)
 - **`SpotifyRecommendationTool`**: Get recommendations based on current mood/activity
 - **`PlaylistManagementTool`**: Create, modify, delete playlists
@@ -211,14 +225,6 @@ This document outlines the planned features, improvements, and ongoing developme
 - **`SendEmailTool`**: Automated email sending
 - **`SendSMSTool`**: SMS alerts via Twilio or similar
 - **`IntercomTool`**: Broadcast TTS messages to smart speakers
-
----
-
-### Energy Management Tools
-- **`PowerMonitorTool`**: Real-time energy consumption tracking
-- **`SmartOutletTool`**: Control smart plugs and measure power draw
-- **`EVChargingTool`**: Monitor and control electric vehicle charging
-- **`SolarProductionTool`**: Query solar panel output and battery status
 
 ---
 
@@ -401,87 +407,19 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ---
 
-## Experimental Ideas
-
-### AI-Generated Music Scenes
-Use AI music generation (Suno, MusicGen) to create ambient soundscapes based on mood or activity.
-
-### Smart Recipe Assistant
-Walk through cooking steps with timer management, ingredient tracking, and substitution suggestions.
-
-### Plant Care Monitor
-Track watering schedules, soil moisture sensors, and provide care recommendations based on plant species.
-
-### Pet Interaction
-Motion-activated camera feeds, automated treat dispensers, laser toy control, activity monitoring.
-
-### Sleep Optimization
-Monitor sleep quality with sensors, adjust bedroom temperature/lighting, generate sleep reports, wake recommendations.
-
-### Fitness & Health Tracking
-Integration with fitness trackers, workout suggestions, nutrition logging, progress visualization.
-
-### Language Learning Helper
-Practice conversations in foreign languages, vocabulary drills, pronunciation feedback.
-
-### Kids' Activity Manager
-Screen time limits, educational content curation, bedtime routines, chore tracking with gamification.
-
-### Home Inventory Management
-Track pantry items with barcode scanning, expiration date monitoring, automatic shopping list generation.
-
-### HVAC Optimization
-Learn heating/cooling patterns, predict optimal schedules, integrate with weather forecasts for energy savings.
-
----
-
 ## Technical Debt & Refactoring
 
 ### Code Quality
-- Add type hints throughout codebase
-- Implement comprehensive docstrings
 - Refactor large functions into smaller units
 - Extract magic numbers/strings into constants
 
 ### Architecture
 - Separate concerns: move API clients out of tools
 - Create shared utilities module for common operations
-- Implement dependency injection for testing
-- Define clear interfaces between layers
 
 ### Performance
 - Cache API responses with TTL expiration
-- Implement request batching for Spotify API
 - Optimize message history truncation strategy
-- Profile and optimize hot paths
-
-### Documentation
-- Add inline code examples in docstrings
-- Create architecture diagrams
-- Document API response formats
-- Write troubleshooting guide
-
----
-
-## Community & Ecosystem
-
-### Open Source Contributions
-- Package and publish on PyPI
-- Create detailed contribution guidelines
-- Set up issue templates and PR workflows
-- Build community plugin repository
-
-### Integration Ecosystem
-- Publish integration guides for popular platforms
-- Create adapter templates for new APIs
-- Document OAuth flow setup procedures
-- Build tool scaffolding CLI
-
-### Educational Content
-- Write blog posts about agentic design patterns
-- Create video tutorials for setup
-- Share example automation scripts
-- Host workshops/webinars on local AI
 
 ---
 
@@ -499,4 +437,4 @@ This system should feel less like issuing commands to a machine and more like co
 
 ---
 
-*Last updated: 2025-11-11*
+*Last updated: 2025-11-12*
