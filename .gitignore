@@ -209,11 +209,10 @@ __marimo__/
 # TTS models
 models/
 
-# Debug messages
-debug_messages.json
-
-# Agent conversation logs
+# Logs and sessions
 logs/
+sessions/
+data/
 
 #Claude stuff
 CLAUDE.md

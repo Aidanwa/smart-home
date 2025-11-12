@@ -14,9 +14,23 @@ logger = logging.getLogger(__name__)
 class WeatherTool(Tool):
 
     def __init__(self):
+        # Get timezone info for tool description
+        tz_env = os.getenv("TIMEZONE", "").strip()
+        if tz_env:
+            local_timezone = tz_env
+        else:
+            # Auto-detect from system
+            now = datetime.now().astimezone()
+            tz_name = now.tzname()  # e.g., "EST" or "EDT"
+            tz_offset = now.strftime("%z")  # e.g., "-0500"
+            tz_offset_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}"
+            local_timezone = f"{tz_name} (UTC{tz_offset_formatted})"
+
         name = "get_weather"
         description = (
-            "Get weather information from weather.gov with control over time. "
+            f"Get weather information from weather.gov with control over time. "
+            f"Your local timezone is {local_timezone}. "
+            f"ALWAYS use your local timezone in timestamps (e.g., '2025-11-12T18:00:00-05:00'), NEVER use UTC unless explicitly requested."
         )
         params = {
             "type": "object",
@@ -34,7 +48,7 @@ class WeatherTool(Tool):
                 },
                 "forecast_times_iso": {
                     "type": "string",
-                    "description": "ISO-8601 timestamp to get forecast for. Only use future times. To get current weather, use 'now'",
+                    "description": f"ISO-8601 timestamp in LOCAL TIMEZONE {local_timezone} with offset (e.g., '2025-11-12T18:00:00-05:00'). MUST include timezone offset. NEVER use UTC (e.g., '...Z') unless explicitly requested. For current weather, use 'now'.",
                     "default":"now"
                 },
             },
@@ -63,6 +77,25 @@ class WeatherTool(Tool):
         location: str = "home",
     ) -> str:
         try:
+            # Validate timestamp format
+            if forecast_times_iso.lower() != "now":
+                # Check if timestamp has timezone info
+                if not ('+' in forecast_times_iso or '-' in forecast_times_iso.split('T')[-1] or forecast_times_iso.endswith('Z')):
+                    # Try to parse and add local timezone as fallback
+                    try:
+                        dt_naive = datetime.fromisoformat(forecast_times_iso)
+                        # Get system timezone
+                        from datetime import datetime as dt_class
+                        local_tz = dt_class.now().astimezone().tzinfo
+                        dt_aware = dt_naive.replace(tzinfo=local_tz)
+                        forecast_times_iso = dt_aware.isoformat()
+                        logger.warning(
+                            f"Timestamp was missing timezone, added local timezone: {forecast_times_iso}",
+                            extra={"tool_name": "get_weather", "original": forecast_times_iso}
+                        )
+                    except Exception as e:
+                        return f"Error: Timestamp must include timezone offset (e.g., '2025-11-12T18:00:00-05:00' or end with 'Z'). Got: '{forecast_times_iso}'. Please provide a complete ISO-8601 timestamp with timezone."
+
             lat, lon, grid = self._resolve_location(location)
             # Build forecast URLs
             if grid:
@@ -161,10 +194,13 @@ def _fmt_percent(v) -> str:
         return "—"
 
 def _time_label(dt: datetime) -> str:
+    """Format datetime with timezone abbreviation (e.g., 'Thu 8 AM EST')."""
     try:
-        return dt.strftime("%a %-I %p")
+        # Unix-style formatting with timezone
+        return dt.strftime("%a %-I %p %Z")
     except ValueError:
-        return dt.strftime("%a %#I %p")
+        # Windows-style formatting with timezone
+        return dt.strftime("%a %#I %p %Z")
 
 
 # --------------------------------

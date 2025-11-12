@@ -1,14 +1,14 @@
 import os
 import json
 import requests
-import uuid
+import random
+import string
 import logging
 from datetime import datetime
 from typing import Iterable, Optional, List, Dict, Any
 from dotenv import load_dotenv
-from smart_home.config.paths import AGENT_LOGS_DIR
 
-load_dotenv()
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +17,20 @@ OPENAI_API_BASE = "https://api.openai.com/v1"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL").strip() if PROVIDER == "openai" else os.getenv("OLLAMA_MODEL", "llama3.1:8b").strip()
 
+
+def _generate_agent_id(length: int = 8) -> str:
+    """Generate a random agent ID using alphanumeric characters."""
+    characters = string.ascii_lowercase + string.digits
+    return ''.join(random.choices(characters, k=length))
+
 # ---------- Base Tool Class ----------
 class Tool:
     """Base tool class. Subclasses should implement .call(**kwargs) -> str."""
-    def __init__(self, name: str, description: str, params: dict):
+    def __init__(self, name: str, description: str, params: dict, session=None):
         self.name = name
         self.description = description
         self.parameters = params
+        self.state_session = session  # Optional session reference for state management (renamed to avoid conflicts with requests.Session)
         self.schema = self.construct_schema()
 
     def construct_schema(self) -> dict:
@@ -62,13 +69,19 @@ class Agent:
         include_time: bool = False,
         provider: Optional[str] = None,
         agent_type: str = "agent",
+        session=None,
     ) -> None:
         self.model: str = model or DEFAULT_MODEL
         self.system_prompt: str = system_prompt
+        self.session = session  # Optional session reference for state management
         self.tools: List[Tool] = list(tools or [])
+        # Pass session to all tools (overwrite any existing session)
+        for tool in self.tools:
+            if hasattr(tool, 'state_session'):
+                tool.state_session = session
         self.tools_schema: List[Dict[str, Any]] = [tool.schema for tool in self.tools] if self.tools else []
         self.messages: List[Dict[str, Any]] = list(messages or [])
-        self.agent_id: str = str(uuid.uuid4())
+        self.agent_id: str = _generate_agent_id()
         self.agent_type: str = agent_type
 
         if include_time:
@@ -97,36 +110,6 @@ class Agent:
         else:
             yield from self._stream_ollama(max_tool_loops=max_tool_loops)
 
-        # Save messages after streaming completes
-        self._save_messages()
-
-    def _save_messages(self) -> None:
-        """Save conversation messages to logs/{agent_type}/{agent_id}_{timestamp}.json"""
-        try:
-            # Create agent-type-specific subdirectory
-            logs_dir = AGENT_LOGS_DIR / self.agent_type
-            logs_dir.mkdir(parents=True, exist_ok=True)
-
-            # Create filename with agent_id and timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            log_file = logs_dir / f"{self.agent_id}_{timestamp}.json"
-
-            # Save messages with metadata
-            log_data = {
-                "agent_id": self.agent_id,
-                "agent_type": self.agent_type,
-                "provider": self.provider,
-                "model": self.model,
-                "timestamp": datetime.now().isoformat(),
-                "messages": self.messages
-            }
-
-            with open(log_file, "w", encoding="utf-8") as f:
-                json.dump(log_data, f, ensure_ascii=False, indent=2)
-
-        except Exception as e:
-            logger.error(f"Failed to save messages: {e}", exc_info=True, extra={"agent_id": self.agent_id})
-
     # ---------- Ollama path ----------
 
     def _stream_ollama(self, max_tool_loops: int) -> Iterable[str]:
@@ -148,7 +131,7 @@ class Agent:
             tool_used = False
 
             try:
-                with requests.post(url, json=data, stream=True, timeout=30) as response:
+                with requests.post(url, json=data, stream=True, timeout=120) as response:
                     if response.status_code != 200:
                         logger.error(
                             f"Ollama API error: {response.text}",

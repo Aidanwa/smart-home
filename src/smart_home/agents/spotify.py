@@ -89,9 +89,8 @@ def _devices_prompt_fragment() -> str:
 
 
 class SpotifyAgent(Agent):
-    """An agent specialized for Spotify control. You have access to Spotify tools."""
 
-    def __init__(self):
+    def __init__(self, session=None):
         # Inject devices (name/id pairs) directly into the system prompt at construction time.
         system_prompt = SPOTIFY_SYSTEM_PROMPT + _devices_prompt_fragment()
 
@@ -105,4 +104,5 @@ class SpotifyAgent(Agent):
             ],
             include_time=True,
             agent_type="spotify",
+            session=session,
         )
