@@ -6,17 +6,33 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ## Current Issues & Active Work
 
+### Highest Priority - MCP Integration
+
+- **MCP (Model Context Protocol) Support**: Add plug-and-play MCP integration as core framework capability
+  - Implement MCP client in the Agent framework
+  - Support dynamic MCP server discovery and connection
+  - Enable runtime loading of MCP tools/resources
+  - Handle MCP server lifecycle (connect, disconnect, reconnect)
+  - Expose MCP tools to agents automatically
+  - Add MCP configuration to `.env` and settings
+  - Design plugin architecture for future MCP servers
+
+**Why this is critical**: MCP will enable both Zigbee/MQTT control for lights and web fetch capabilities for search. Making it plug-and-play now enables future extensibility without core framework changes.
+
 ### High Priority - Capability Expansion
 
 - **Web Search Agent**: Enable the system to retrieve information from the internet to answer any question
-  - Implement web search tool (DuckDuckGo, SearXNG, or similar API)
+  - Use MCP fetch tool for content retrieval
+  - Implement web search tool (DuckDuckGo API as fallback)
   - Add content extraction and summarization capabilities
   - Handle multi-step research queries
   - Cache search results for performance
 
 - **Light Agent**: Complete Zigbee MQTT integration for smart lighting control
-  - Finish Zigbee MQTT MCP implementation on server
-  - Create Light Agent with tools for on/off, brightness, color control
+  - Finish Zigbee MQTT MCP server implementation on separate server
+  - Connect to MCP server from smart home system
+  - Create Light Agent using MCP-exposed Zigbee tools
+  - Implement tools for on/off, brightness, color control
   - Implement scene management
   - Add state query capabilities
   - Test with actual Zigbee devices via MQTT broker
@@ -254,6 +270,34 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ## Future Framework Improvements
 
+### MCP Ecosystem *(Foundation for Extensibility)*
+**Goal**: Build a robust MCP integration layer for plug-and-play capabilities.
+
+**Features:**
+- **MCP Client Library**: Core client for connecting to MCP servers
+- **Auto-discovery**: Detect and connect to MCP servers on network or via stdio
+- **Tool Registry**: Dynamically register MCP-provided tools into agent framework
+- **Resource Access**: Support MCP resources (files, data, configs)
+- **Prompts/Templates**: Leverage MCP prompt templates from servers
+- **Multi-server Support**: Connect to multiple MCP servers simultaneously
+- **Error Handling**: Graceful degradation when MCP servers are unavailable
+- **Configuration**: Simple `.env` or YAML config for MCP server endpoints
+
+**Example MCP Servers to Support:**
+- **Zigbee/MQTT Server**: Smart home device control (lights, sensors, switches)
+- **Web Fetch Server**: HTTP requests and content extraction
+- **Database Server**: Query local databases (SQLite, PostgreSQL)
+- **File System Server**: Read/write files on remote systems
+- **API Gateway Server**: Unified access to multiple third-party APIs
+
+**Architecture Benefits:**
+- No need to modify core Agent code for new integrations
+- Community can build and share MCP servers
+- Separation of concerns: integration logic lives in MCP servers
+- Hot-swappable capabilities without restarting system
+
+---
+
 ### Multi-Agent Coordination
 **Goal**: Enable agents to collaborate on complex tasks.
 
@@ -405,6 +449,8 @@ This document outlines the planned features, improvements, and ongoing developme
 - Dependency management per plugin
 - Plugin marketplace/repository
 
+**Note**: MCP servers will serve as the primary plugin mechanism for external integrations. This native plugin architecture focuses on Python-based agents and tools that run in-process.
+
 ---
 
 ## Technical Debt & Refactoring
@@ -437,4 +483,4 @@ This system should feel less like issuing commands to a machine and more like co
 
 ---
 
-*Last updated: 2025-11-12*
+*Last updated: 2025-11-13*
