@@ -35,14 +35,27 @@ class Tool:
 
     def construct_schema(self) -> dict:
         if PROVIDER == "openai":
-            self.parameters['additionalProperties'] = False
-            return {
-                "type": "function",
-                "name": self.name,
-                "description": self.description or "",
-                "parameters": self.parameters or {},
-                "strict": True,
-            }
+            # Only use strict mode if additionalProperties isn't already set
+            # This allows MCP tools with optional params to use non-strict mode
+            use_strict = self.parameters.get('additionalProperties') is False
+
+            if use_strict:
+                # Strict mode already configured in parameters
+                return {
+                    "type": "function",
+                    "name": self.name,
+                    "description": self.description or "",
+                    "parameters": self.parameters or {},
+                    "strict": True,
+                }
+            else:
+                # Non-strict mode (for tools with optional parameters)
+                return {
+                    "type": "function",
+                    "name": self.name,
+                    "description": self.description or "",
+                    "parameters": self.parameters or {},
+                }
         elif PROVIDER == "ollama":
             return {
                 "type": "function",
@@ -79,7 +92,10 @@ class Agent:
         for tool in self.tools:
             if hasattr(tool, 'state_session'):
                 tool.state_session = session
-        self.tools_schema: List[Dict[str, Any]] = [tool.schema for tool in self.tools] if self.tools else []
+        # Build tools schema, filtering out None schemas (e.g., from MCP tools on unsupported providers)
+        self.tools_schema: List[Dict[str, Any]] = [
+            tool.schema for tool in self.tools if tool.schema is not None
+        ] if self.tools else []
         self.messages: List[Dict[str, Any]] = list(messages or [])
         self.agent_id: str = _generate_agent_id()
         self.agent_type: str = agent_type

@@ -2,6 +2,7 @@ from smart_home.utils.voice_utils import streaming_tts, speech_to_text  # , wait
 from smart_home.agents.weather import WeatherAgent
 from smart_home.agents.spotify import SpotifyAgent
 from smart_home.agents.home import HomeAgent
+from smart_home.agents.search import SearchAgent
 from smart_home.core.agent import Agent
 from smart_home.core.session import Session
 import os
@@ -20,6 +21,7 @@ NAME_TO_AGENT = {
     "weather": WeatherAgent,
     "spotify": SpotifyAgent,
     "home": HomeAgent,
+    "search": SearchAgent,
 }
 
 def select_agent_by_name(name: str, session: Session = None) -> Agent|None:
