@@ -266,4 +266,4 @@ MIT License - See LICENSE file for details.
 
 ---
 
-Developed as part of an ongoing exploration of agentic automation and local-first AI systems.
+Developed as part of an ongoing exploration of agentic automation and local-first AI systems
