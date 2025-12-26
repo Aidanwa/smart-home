@@ -75,16 +75,17 @@ def converse_with_agent(Agent: Agent | None = None, session: Session | None = No
     # --------------------------------------------------------------------
 
     wakeword = os.getenv("WAKEWORD", "").lower()
-    first_interaction = True  # Track if this is the first interaction
+    chime = True  # Track if this is the first interaction
 
     while True:
         if os.getenv("SPEECH_TO_TEXT", "False").lower() == "true":
             # WAKE WORD DISABLED - direct STT for now
             # wait_for_wake_word(model_paths=wake_models, threshold=0.2)
             print("\nListening...")
-            # Only play chime on first interaction, not on wakeword rejections
-            user_input = speech_to_text(play_sounds=first_interaction)
+            user_input = speech_to_text(play_sounds=chime)
             print("You:", user_input)
+
+            chime = False
 
             # Check for wakeword if configured
             if wakeword and wakeword not in user_input.lower():
@@ -100,9 +101,6 @@ def converse_with_agent(Agent: Agent | None = None, session: Session | None = No
             print("Exiting the conversation.")
             break
 
-        # Mark that we've had a successful interaction (disable chime after first)
-        first_interaction = False
-
         def response_stream():
             for chunk in agent.stream(user_input):
                 print(chunk, end="", flush=True)
@@ -117,6 +115,8 @@ def converse_with_agent(Agent: Agent | None = None, session: Session | None = No
                 pass
 
         print("\n")
+
+        chime = True
 
         session.save() # Update saved session after each interactions
 
