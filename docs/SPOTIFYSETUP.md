@@ -1,11 +1,11 @@
-### 🎵 Setting up Spotify API Access (Refresh Token Guide)
+###  Setting up Spotify API Access (Refresh Token Guide)
 
 Your Smart Home Assistant can control Spotify playback using your personal account.  
 To enable this, you’ll need to create a Spotify Developer App and generate a **refresh token** that allows the agent to authenticate securely.
 
 ---
 
-#### 1️⃣ Create a Spotify Developer App
+#### 1️ Create a Spotify Developer App
 
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/applications).  
 2. Click **“Create App.”**  
@@ -26,7 +26,7 @@ To enable this, you’ll need to create a Spotify Developer App and generate a *
 
 ---
 
-#### 2️⃣ Run a Local Auth Script (One-Time Setup)
+#### Run a Local Auth Script (One-Time Setup)
 
 Run the following Python script to complete the OAuth flow and obtain your **refresh token**.
 
@@ -80,7 +80,7 @@ This script will:
 
 ---
 
-#### 3️⃣ Add Credentials to `.env`
+#### Add Credentials to `.env`
 
 After running the script, copy the tokens into your `.env` file:
 
@@ -92,7 +92,7 @@ SPOTIFY_REFRESH_TOKEN=your_refresh_token_here
 
 ---
 
-#### 4️⃣ Test the Integration
+#### Test the Integration
 
 Once your environment is configured, you can test Spotify connectivity:
 
@@ -104,7 +104,7 @@ If authentication succeeds, your Smart Home Assistant will be able to query avai
 
 ---
 
-#### 🔒 Security and Compliance Notes
+#### Security and Compliance Notes
 
 - **Redirect URI Rules (required by Spotify):**
   - Always use **HTTPS**, unless using a loopback IP (`127.0.0.1` or `[::1]`).
@@ -122,7 +122,3 @@ If authentication succeeds, your Smart Home Assistant will be able to query avai
     http://[::1]:8000/callback
     ```
 
----
-
-✅ **You’re all set!**  
-The refresh token never expires (unless revoked) — your agent will automatically handle token refreshes and maintain a secure connection to Spotify without needing manual re-authorization.

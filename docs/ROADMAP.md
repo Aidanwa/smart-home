@@ -6,21 +6,6 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ## Current Issues & Active Work
 
-### Highest Priority - MCP Integration
-
-- **MCP (Model Context Protocol) Support**: Add plug-and-play MCP integration as core framework capability
-  - Implement MCP client in the Agent framework
-  - Support dynamic MCP server discovery and connection
-  - Enable runtime loading of MCP tools/resources
-  - Handle MCP server lifecycle (connect, disconnect, reconnect)
-  - Expose MCP tools to agents automatically
-  - Add MCP configuration to `.env` and settings
-  - Design plugin architecture for future MCP servers
-
-**Why this is critical**: MCP will enable both Zigbee/MQTT control for lights and web fetch capabilities for search. Making it plug-and-play now enables future extensibility without core framework changes.
-
-### High Priority - Capability Expansion
-
 - **Web Search Agent**: Enable the system to retrieve information from the internet to answer any question
   - Use MCP fetch tool for content retrieval
   - Implement web search tool (DuckDuckGo API as fallback)
@@ -28,14 +13,18 @@ This document outlines the planned features, improvements, and ongoing developme
   - Handle multi-step research queries
   - Cache search results for performance
 
-- **Light Agent**: Complete Zigbee MQTT integration for smart lighting control
-  - Finish Zigbee MQTT MCP server implementation on separate server
-  - Connect to MCP server from smart home system
-  - Create Light Agent using MCP-exposed Zigbee tools
-  - Implement tools for on/off, brightness, color control
-  - Implement scene management
-  - Add state query capabilities
-  - Test with actual Zigbee devices via MQTT broker
+### High Priority - Capability Expansion
+
+- **Fix Spotify Tool Implementation**: The Spotify integration is currently broken (as of commit 300fe40). Need to debug and restore functionality for:
+  - Play/Pause commands
+  - Device switching
+  - Volume control
+  - Search and URI playback
+  - Optimize device finding, and figure out how to specify specific device for playback when none active.
+
+- **Timer/Scheduling Capability**:
+  - Schedule tasks, timers, alarms, device controls
+  - Motion alerts proactively trigger agent conversation
 
 ### Medium Priority - User Interface
 
@@ -54,12 +43,6 @@ This document outlines the planned features, improvements, and ongoing developme
   - Threshold tuning
   - Integration with main conversation loop
 
-- **Fix Spotify Tool Implementation**: The Spotify integration is currently broken (as of commit 300fe40). Need to debug and restore functionality for:
-  - Play/Pause commands
-  - Device switching
-  - Volume control
-  - Search and URI playback
-
 - **Configuration Validation**: Add startup validation for:
   - Required environment variables based on selected provider
   - Model file existence (Vosk, OpenWakeWord)
@@ -75,51 +58,20 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ---
 
-## Future Agents
-
-### Web Search Agent *(In Active Development)*
-**Description**: Retrieve information from the internet to answer questions beyond the LLM's knowledge base.
-
-**Tools:**
-- `WebSearchTool`: Search the internet using DuckDuckGo, SearXNG, or similar
-- `ExtractContentTool`: Extract and parse content from web pages
-- `SummarizeTool`: Condense long articles or search results
-- `FactCheckTool`: Cross-reference information across multiple sources
-
-**Integration:**
-- DuckDuckGo API (no authentication required)
-- SearXNG self-hosted instance (privacy-focused)
-- BeautifulSoup/Playwright for content extraction
-- Result caching to reduce API calls
-
-**Example queries:**
-- "What's the latest news about AI developments?"
-- "Look up the recipe for chocolate chip cookies"
-- "Find information about the history of the Roman Empire"
-- "What are the current gas prices in my area?"
+## Future Agent Capability
 
 ---
-
-### Smart Lighting Agent *(In Active Development)*
-**Description**: Control smart lights (Zigbee via MQTT) with natural language.
+### Smart Home Agent *(In Active Development)*
+**Description**: Further Control smart Zigbee via MQTT with natural language.
 
 **Tools:**
-- `SetLightStateTool`: Turn lights on/off, set brightness, change color
 - `SetSceneTool`: Apply predefined lighting scenes (movie, dinner, reading, etc.)
-- `ScheduleLightTool`: Set timers and schedules for automatic control
-- `QueryLightStateTool`: Get current state of lights
-
-**Integration:**
-- MQTT/Zigbee2MQTT for local control
-- MCP (Model Context Protocol) server for Zigbee MQTT bridge
+- `ScheduleStateTool`: Set timers and schedules for automatic control
 
 **Example queries:**
-- "Turn on the bedroom lights"
-- "Set living room to 50% brightness"
-- "Make the kitchen lights warm white"
 - "Turn off all lights in 30 minutes"
-
-**Status**: Requires completion of Zigbee MQTT MCP implementation on server
+- "Set a 10 minute timer."
+- "Set an alarm for 10am."
 
 ---
 
@@ -152,7 +104,6 @@ This document outlines the planned features, improvements, and ongoing developme
 - `ControlTVTool`: Power, input switching, volume for smart TVs
 - `StreamingSearchTool`: Find content across Netflix, Plex, YouTube, etc.
 - `PlayLocalMediaTool`: Browse and play from local media library
-- `PodcastTool`: Subscribe to and play podcasts
 
 **Integration:**
 - Plex Media Server API
@@ -164,7 +115,6 @@ This document outlines the planned features, improvements, and ongoing developme
 - "Play Stranger Things on Netflix"
 - "Find movies with Tom Hanks in my Plex library"
 - "Turn on the TV and switch to HDMI 2"
-- "Play the latest episode of my favorite podcast"
 
 ---
 
@@ -188,33 +138,6 @@ This document outlines the planned features, improvements, and ongoing developme
 - "Are all windows closed?"
 - "Arm the alarm system"
 - "Any motion detected while I was gone?"
-
----
-
-### Home Assistant Integration Agent
-**Description**: Generic bridge to Home Assistant for controlling any entity.
-
-**Tools:**
-- `CallServiceTool`: Execute any Home Assistant service
-- `GetStateTool`: Query entity states
-- `SetStateTool`: Modify entity attributes
-- `ListEntitiesTool`: Discover available entities
-
-**Integration:**
-- Home Assistant REST API
-- WebSocket API for real-time updates
-- Long-lived access tokens
-
-**Benefits:**
-- Single integration point for dozens of smart home platforms
-- Access to Home Assistant's extensive automation logic
-- Unified interface for heterogeneous devices
-
-**Example queries:**
-- "What's the temperature on the thermostat?"
-- "Start the robot vacuum"
-- "Is the garage door open?"
-- "Set the thermostat to 72 degrees"
 
 ---
 
@@ -269,52 +192,6 @@ This document outlines the planned features, improvements, and ongoing developme
 ---
 
 ## Future Framework Improvements
-
-### MCP Ecosystem *(Foundation for Extensibility)*
-**Goal**: Build a robust MCP integration layer for plug-and-play capabilities.
-
-**Features:**
-- **MCP Client Library**: Core client for connecting to MCP servers
-- **Auto-discovery**: Detect and connect to MCP servers on network or via stdio
-- **Tool Registry**: Dynamically register MCP-provided tools into agent framework
-- **Resource Access**: Support MCP resources (files, data, configs)
-- **Prompts/Templates**: Leverage MCP prompt templates from servers
-- **Multi-server Support**: Connect to multiple MCP servers simultaneously
-- **Error Handling**: Graceful degradation when MCP servers are unavailable
-- **Configuration**: Simple `.env` or YAML config for MCP server endpoints
-
-**Example MCP Servers to Support:**
-- **Zigbee/MQTT Server**: Smart home device control (lights, sensors, switches)
-- **Web Fetch Server**: HTTP requests and content extraction
-- **Database Server**: Query local databases (SQLite, PostgreSQL)
-- **File System Server**: Read/write files on remote systems
-- **API Gateway Server**: Unified access to multiple third-party APIs
-
-**Architecture Benefits:**
-- No need to modify core Agent code for new integrations
-- Community can build and share MCP servers
-- Separation of concerns: integration logic lives in MCP servers
-- Hot-swappable capabilities without restarting system
-
----
-
-### Multi-Agent Coordination
-**Goal**: Enable agents to collaborate on complex tasks.
-
-**Features:**
-- Agent-to-agent communication protocol
-- Task delegation and result aggregation
-- Shared context/memory between agents
-- Parallel execution for independent subtasks
-
-**Example:**
-- User: "Prepare for movie night"
-- HomeAgent delegates to:
-  - LightingAgent: Dim lights to 20%
-  - EntertainmentAgent: Load movie queue
-  - SpotifyAgent: Pause music
-
----
 
 ### Memory & Context Management
 **Goal**: Enable agents to remember past interactions and learn preferences.
@@ -440,28 +317,7 @@ This document outlines the planned features, improvements, and ongoing developme
 
 ---
 
-### Plugin Architecture
-**Goal**: Make it easy for users to add custom agents and tools.
-
-**Features:**
-- Hot-reload for plugin code changes
-- Standardized plugin manifest format
-- Dependency management per plugin
-- Plugin marketplace/repository
-
-**Note**: MCP servers will serve as the primary plugin mechanism for external integrations. This native plugin architecture focuses on Python-based agents and tools that run in-process.
-
----
-
 ## Technical Debt & Refactoring
-
-### Code Quality
-- Refactor large functions into smaller units
-- Extract magic numbers/strings into constants
-
-### Architecture
-- Separate concerns: move API clients out of tools
-- Create shared utilities module for common operations
 
 ### Performance
 - Cache API responses with TTL expiration
@@ -479,8 +335,6 @@ The goal is to build a **truly intelligent home assistant** that:
 4. **Extends easily** through modular tools and agents
 5. **Respects users** with transparent reasoning and control
 
-This system should feel less like issuing commands to a machine and more like collaborating with a thoughtful assistant that anticipates needs, suggests improvements, and handles complexity behind the scenes.
-
 ---
 
-*Last updated: 2025-11-13*
+*Last updated: 2025-12-26*
