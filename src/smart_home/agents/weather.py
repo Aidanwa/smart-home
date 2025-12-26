@@ -29,11 +29,3 @@ class WeatherAgent(Agent):
             agent_type="weather",
             session=session,
         )
-
-if __name__ == "__main__":
-    import sys
-    q = " ".join(sys.argv[1:]) or "What's the weather around 6pm today at home?"
-    agent = WeatherAgent()
-    for chunk in agent.stream(q):
-        print(chunk, end="", flush=True)
-    print()

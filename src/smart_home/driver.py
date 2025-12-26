@@ -3,6 +3,7 @@ from smart_home.agents.weather import WeatherAgent
 from smart_home.agents.spotify import SpotifyAgent
 from smart_home.agents.home import HomeAgent
 from smart_home.agents.search import SearchAgent
+from smart_home.agents.zigbee import ZigbeeAgent
 from smart_home.core.agent import Agent
 from smart_home.core.session import Session
 import os
@@ -22,6 +23,7 @@ NAME_TO_AGENT = {
     "spotify": SpotifyAgent,
     "home": HomeAgent,
     "search": SearchAgent,
+    "zigbee": ZigbeeAgent,
 }
 
 def select_agent_by_name(name: str, session: Session = None) -> Agent|None:
@@ -72,22 +74,34 @@ def converse_with_agent(Agent: Agent | None = None, session: Session | None = No
     # wake_models = [str(wake_model_dir / wake_model)]
     # --------------------------------------------------------------------
 
+    wakeword = os.getenv("WAKEWORD", "").lower()
+    first_interaction = True  # Track if this is the first interaction
+
     while True:
         if os.getenv("SPEECH_TO_TEXT", "False").lower() == "true":
             # WAKE WORD DISABLED - direct STT for now
             # wait_for_wake_word(model_paths=wake_models, threshold=0.2)
             print("\nListening...")
-            user_input = speech_to_text(play_sounds=True)
+            # Only play chime on first interaction, not on wakeword rejections
+            user_input = speech_to_text(play_sounds=first_interaction)
             print("You:", user_input)
+
+            # Check for wakeword if configured
+            if wakeword and wakeword not in user_input.lower():
+                print(f"(No wakeword '{wakeword}' detected, ignoring)")
+                continue
         else:
             user_input = input("You: ")
 
         if not user_input:
             continue
 
-        if user_input.lower() in ("stop", "exit"):
+        if  "exit" in user_input.lower():
             print("Exiting the conversation.")
             break
+
+        # Mark that we've had a successful interaction (disable chime after first)
+        first_interaction = False
 
         def response_stream():
             for chunk in agent.stream(user_input):

@@ -101,7 +101,7 @@ class Session:
         """
         Directly append a message to the primary agent's history.
 
-        This is the KEY method for sub-agent result injection:
+        This is for sub-agent result injection:
         - Sub-agent executes and generates response
         - Tool calls this method to inject response into parent's history
         - Parent agent's next loop iteration sees complete history, exits without LLM call
